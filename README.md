@@ -27,6 +27,15 @@ PIXELART_SMOKE=1 QT_QPA_PLATFORM=offscreen python -m pixelart_converter
 
 ウィンドウを出して直後に終了し、成功時の終了コードは 0 です。`python -m unittest discover -s tests` でも同じスモークを実行できます。
 
+## 同梱 FFmpeg
+
+変換には LGPL ビルドの FFmpeg（`libx264` なし）を同梱する。バージョン、configure フラグ、ビルドと検証の手順は [vendor/ffmpeg/README.md](vendor/ffmpeg/README.md)。バイナリはビルド成果物としてリポジトリに置かない。
+
+```bash
+scripts/build_ffmpeg_lgpl.sh --check-flags   # configure フラグの確認（ビルドしない）
+scripts/build_ffmpeg_lgpl.sh                 # ビルドして vendor/ffmpeg/macos/ へ配置
+```
+
 ## 技術スタック
 
 - 言語 / GUI: Python + PySide6（実行時依存は `PySide6-Essentials`。Addons は空ウィンドウでは不要）
@@ -40,6 +49,7 @@ PIXELART_SMOKE=1 QT_QPA_PLATFORM=offscreen python -m pixelart_converter
 | [docs/requirements.md](docs/requirements.md) | 機能要件、非機能要件、ライセンス方針 |
 | [docs/design.md](docs/design.md) | アーキテクチャ、UI、変換パイプライン、同梱方針 |
 | [docs/tasks.md](docs/tasks.md) | 実装フェーズと完了条件 |
+| [vendor/ffmpeg/README.md](vendor/ffmpeg/README.md) | 同梱 FFmpeg のバージョン、configure フラグ、LGPL 上の注意 |
 
 ## ライセンス
 

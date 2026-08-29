@@ -1,0 +1,35 @@
+# pixelart-converter: FFmpeg configure flags (LGPL, no GPL, no x264).
+#
+# This file is the single source of truth. scripts/build_ffmpeg_lgpl.sh reads
+# it, vendor/ffmpeg/README.md embeds it, and tests/test_ffmpeg_build_flags.py
+# asserts that no GPL-triggering flag ever appears here.
+#
+# Syntax: 'key=value' settings, '[section]' headers, '#' comments, and one
+# configure flag per line. Flag order is preserved.
+
+version=7.1.1
+source_url=https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz
+
+[common]
+--disable-gpl
+--disable-nonfree
+--disable-version3
+--disable-autodetect
+--disable-network
+--disable-avdevice
+--disable-doc
+--disable-debug
+--disable-programs
+--enable-ffmpeg
+--enable-ffprobe
+--enable-zlib
+
+[macos]
+--enable-pthreads
+--enable-videotoolbox
+--enable-encoder=h264_videotoolbox
+
+[windows]
+--enable-w32threads
+--enable-mediafoundation
+--enable-encoder=h264_mf

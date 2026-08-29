@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Slot
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QRadioButton,
     QSizePolicy,
@@ -24,7 +26,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pixelart_converter.errors import ConversionError
+from pixelart_converter.conversion.service import ConversionService
+from pixelart_converter.errors import ConversionError, ErrorCode
 from pixelart_converter.logging_config import get_logger
 from pixelart_converter.models import (
     AllFrames,
@@ -42,6 +45,7 @@ from pixelart_converter.models import (
 )
 from pixelart_converter.ui.options import parse_frame_list
 from pixelart_converter.ui.preview import NearestNeighborPreview, load_gif_preview
+from pixelart_converter.ui.worker import ConversionWorker
 
 _logger = get_logger("ui")
 
@@ -56,15 +60,19 @@ _OUTPUT_FILTERS = {
 
 
 class MainWindow(QMainWindow):
-    """Main window: GIF preview plus format-specific output options (T4-2)."""
+    """Main window: options, convert/cancel, and worker-thread progress (T4-3)."""
 
-    def __init__(self) -> None:
+    def __init__(self, service: ConversionService | None = None) -> None:
         super().__init__()
         self.setWindowTitle("pixelart-converter")
         self.resize(960, 640)
 
+        self._service = service if service is not None else ConversionService()
         self._last_error: ConversionError | None = None
         self._input_path: str | None = None
+        self._converting = False
+        self._thread: QThread | None = None
+        self._worker: ConversionWorker | None = None
 
         self._build_ui()
         self._sync_option_widgets()
@@ -74,8 +82,10 @@ class MainWindow(QMainWindow):
         root = QVBoxLayout(central)
 
         body = QHBoxLayout()
-        body.addWidget(self._build_input_panel(), stretch=3)
-        body.addWidget(self._build_options_panel(), stretch=2)
+        self._input_panel = self._build_input_panel()
+        self._options_panel = self._build_options_panel()
+        body.addWidget(self._input_panel, stretch=3)
+        body.addWidget(self._options_panel, stretch=2)
         root.addLayout(body, stretch=1)
         root.addWidget(self._build_actions_bar())
 
@@ -281,20 +291,22 @@ class MainWindow(QMainWindow):
 
     def _build_actions_bar(self) -> QWidget:
         bar = QWidget()
-        layout = QHBoxLayout(bar)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(QLabel(self.tr("Output")))
+        outer = QVBoxLayout(bar)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel(self.tr("Output")))
         self.output_path_edit = QLineEdit()
         self.output_path_edit.setObjectName("outputPathEdit")
         self.output_path_edit.setPlaceholderText(
             self.tr("Default from input name")
         )
-        layout.addWidget(self.output_path_edit, stretch=1)
+        row.addWidget(self.output_path_edit, stretch=1)
 
-        browse = QPushButton(self.tr("Browse..."))
-        browse.setObjectName("browseOutputButton")
-        browse.clicked.connect(self._on_browse_output)
-        layout.addWidget(browse)
+        self.browse_output_button = QPushButton(self.tr("Browse..."))
+        self.browse_output_button.setObjectName("browseOutputButton")
+        self.browse_output_button.clicked.connect(self._on_browse_output)
+        row.addWidget(self.browse_output_button)
 
         self.convert_button = QPushButton(self.tr("Convert"))
         self.convert_button.setObjectName("convertButton")
@@ -302,7 +314,30 @@ class MainWindow(QMainWindow):
         self.convert_button.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
         )
-        layout.addWidget(self.convert_button)
+        self.convert_button.clicked.connect(self._on_convert)
+        row.addWidget(self.convert_button)
+
+        self.cancel_button = QPushButton(self.tr("Cancel"))
+        self.cancel_button.setObjectName("cancelButton")
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
+        self.cancel_button.clicked.connect(self._on_cancel)
+        row.addWidget(self.cancel_button)
+        outer.addLayout(row)
+
+        progress_row = QHBoxLayout()
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setObjectName("progressBar")
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)
+        progress_row.addWidget(self.progress_bar, stretch=1)
+        self.progress_label = QLabel("")
+        self.progress_label.setObjectName("progressLabel")
+        progress_row.addWidget(self.progress_label)
+        outer.addLayout(progress_row)
         return bar
 
     def _sync_option_widgets(self) -> None:
@@ -402,6 +437,16 @@ class MainWindow(QMainWindow):
         return self._last_error
 
     @property
+    def is_converting(self) -> bool:
+        """True while a worker is running convert (for tests and UI lock)."""
+        return self._converting
+
+    @property
+    def conversion_worker(self) -> ConversionWorker | None:
+        """Active worker object, if a conversion is in flight."""
+        return self._worker
+
+    @property
     def input_path(self) -> str | None:
         """Currently selected input path, even if preview failed to load."""
         return self._input_path
@@ -416,6 +461,7 @@ class MainWindow(QMainWindow):
         self._input_path = str(path)
         self.path_label.setText(self._input_path)
         self._load_preview(self._input_path)
+        self.convert_button.setEnabled(not self._converting)
 
     def _on_browse(self) -> None:
         start_dir = ""
@@ -482,6 +528,111 @@ class MainWindow(QMainWindow):
                 self.tr("Conversion failed"),
                 error.message,
             )
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Cancel an in-flight convert so the worker thread can finish."""
+        if self._thread is not None:
+            self._service.cancel()
+            self._thread.quit()
+            self._thread.wait(5_000)
+        super().closeEvent(event)
+
+    def _on_convert(self) -> None:
+        if self._converting or self._thread is not None:
+            return
+        try:
+            job = self.build_job()
+        except ValueError as exc:
+            self.show_error(
+                ConversionError.from_code(
+                    ErrorCode.INVALID_INPUT,
+                    message=str(exc),
+                    detail=str(exc),
+                )
+            )
+            return
+        self._start_conversion(job)
+
+    def _on_cancel(self) -> None:
+        if not self._converting:
+            return
+        self._service.cancel()
+
+    def _start_conversion(self, job: ConversionJob) -> None:
+        self._last_error = None
+        self._error_label.hide()
+        self._error_label.clear()
+        self._set_converting(True)
+
+        thread = QThread(self)
+        worker = ConversionWorker(self._service, job)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.progress.connect(
+            self._on_convert_progress,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.succeeded.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        worker.succeeded.connect(
+            self._on_convert_succeeded,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.failed.connect(
+            self._on_convert_failed,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        thread.finished.connect(self._on_worker_thread_finished)
+        self._thread = thread
+        self._worker = worker
+        thread.start()
+
+    def _set_converting(self, converting: bool) -> None:
+        self._converting = converting
+        self._input_panel.setEnabled(not converting)
+        self._options_panel.setEnabled(not converting)
+        self.output_path_edit.setEnabled(not converting)
+        self.browse_output_button.setEnabled(not converting)
+        self.convert_button.setEnabled(not converting and self._input_path is not None)
+        self.cancel_button.setEnabled(converting)
+        if converting:
+            self.progress_bar.setRange(0, 0)
+            self.progress_label.setText(self.tr("Converting…"))
+
+    @Slot(float)
+    def _on_convert_progress(self, seconds: float) -> None:
+        self.progress_label.setText(self.tr("{0:.2f}s").format(seconds))
+
+    @Slot()
+    def _on_convert_succeeded(self) -> None:
+        self._set_converting(False)
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(1)
+        self.progress_label.setText(self.tr("Done"))
+
+    @Slot(object)
+    def _on_convert_failed(self, error: object) -> None:
+        self._set_converting(False)
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0)
+        self.progress_label.clear()
+        if not isinstance(error, ConversionError):
+            error = ConversionError.from_code(ErrorCode.UNKNOWN, detail=repr(error))
+        self.show_error(
+            error,
+            show_dialog=error.code is not ErrorCode.CANCELLED,
+        )
+
+    @Slot()
+    def _on_worker_thread_finished(self) -> None:
+        worker = self._worker
+        thread = self._thread
+        self._worker = None
+        self._thread = None
+        if worker is not None:
+            worker.deleteLater()
+        if thread is not None:
+            thread.deleteLater()
 
 
 def _optional_dimension_spin() -> QSpinBox:

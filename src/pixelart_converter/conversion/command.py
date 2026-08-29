@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from pixelart_converter.conversion.binary import resolve_ffmpeg
-from pixelart_converter.conversion.encoder import EncoderResolver
+from pixelart_converter.conversion.encoder import ALLOWED_MP4_ENCODERS, EncoderResolver
 from pixelart_converter.errors import ConversionError, ErrorCode
 from pixelart_converter.models import ConversionJob, MP4Options, MP4Output, OutputFormat
 
@@ -19,7 +21,7 @@ class FFmpegCommandBuilder:
         output ``-t``.
         """
 
-        argv = [str(resolve_ffmpeg())]
+        argv = [str(resolve_ffmpeg()), "-nostdin", "-y"]
         argv.extend(self._input_args(job))
 
         common = job.common
@@ -61,7 +63,11 @@ class FFmpegCommandBuilder:
         if options.duration_seconds is not None:
             return ["-stream_loop", "-1"]
         loop_count = options.loop_count
-        assert loop_count is not None
+        if loop_count is None:
+            raise ConversionError.from_code(
+                ErrorCode.UNKNOWN,
+                detail="MP4 job is missing loop_count after duration check",
+            )
         extra_repeats = loop_count - 1
         return ["-stream_loop", str(extra_repeats)]
 
@@ -70,11 +76,14 @@ class FFmpegCommandBuilder:
             return []
         options = _mp4_options(job)
         encoder = EncoderResolver().resolve()
-        if encoder is None:
-            # Service fail-closes first; builder never falls back to libx264.
+        if encoder is None or encoder.name not in ALLOWED_MP4_ENCODERS:
             raise ConversionError.from_code(
                 ErrorCode.ENCODER_UNAVAILABLE,
-                detail="bundled ffmpeg has no hardware H.264 encoder",
+                detail=(
+                    "bundled ffmpeg has no hardware H.264 encoder"
+                    if encoder is None
+                    else f"refusing encoder {encoder.name!r}"
+                ),
             )
         argv = [
             "-c:v",
@@ -95,7 +104,13 @@ def _mp4_options(job: ConversionJob) -> MP4Options:
 
 
 def _format_duration(seconds: float) -> str:
-    """Render seconds for FFmpeg ``-t`` without scientific notation."""
+    """Render seconds for FFmpeg ``-t`` without scientific notation.
 
-    text = format(seconds, "g")
-    return text if text else str(seconds)
+    ``format(x, "g")`` switches to ``1e-05`` below 1e-4, which FFmpeg's
+    option parser does not accept as a time.
+    """
+
+    text = format(Decimal.from_float(seconds), "f")
+    if "e" in text.lower():
+        raise ValueError(f"duration must not use scientific notation: {text!r}")
+    return text

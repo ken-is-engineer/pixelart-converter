@@ -1,6 +1,18 @@
 # パッケージング
 
-macOS の署名なしローカル `.app` と Windows の onedir `.exe` フォルダ。onefile か onedir かの最終判断は T5-3。
+macOS の署名なしローカル `.app` と Windows の onedir `.exe` フォルダ。
+
+## Chosen mode: onedir
+
+PyInstaller の **onedir**（`COLLECT`；macOS は `BUNDLE` で `.app`）を採用する。`packaging/macos.spec` と `packaging/windows.spec` は onefile ではなく onedir で書かれている。
+
+| 観点 | onedir を選んだ理由 |
+|------|---------------------|
+| 起動時間 | onefile は起動時に一時ディレクトリへ展開するため、onedir の方が起動が速い |
+| Qt / LGPL | PySide6 の `.dylib` / `.dll` を動的リンクのまま同梱しやすく、LGPL 上の扱いが明確 |
+| Windows AV | onefile の「展開 → 実行」パターンはウイルス対策ソフトの誤検知が起きやすい。onedir の方がリスクが低い（一次判断） |
+
+**ウイルス誤検知の確認:** 本タスク（T5-3）では Windows 実機上での AV スキャンは未実施（開発環境が macOS のため）。`dist/pixelart-converter/` をビルドした Windows マシンで、Defender 等による一次確認は **pending** とする。
 
 ## macOS（署名なし・ローカル起動）
 

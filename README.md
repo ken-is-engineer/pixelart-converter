@@ -40,7 +40,7 @@ scripts/build_ffmpeg_lgpl.sh                 # ビルドして vendor/ffmpeg/mac
 
 - 言語 / GUI: Python + PySide6（実行時依存は `PySide6-Essentials`。Addons は空ウィンドウでは不要）
 - 変換エンジン: FFmpeg（subprocess 経由。ライブラリとして直接リンクしない）
-- パッケージング: PyInstaller（macOS `.app` / Windows `.exe`）
+- パッケージング: PyInstaller **onedir**（macOS `.app` / Windows フォルダ配布。詳細は [docs/packaging.md](docs/packaging.md)）
 
 ## ドキュメント
 

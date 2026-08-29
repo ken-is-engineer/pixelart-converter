@@ -14,8 +14,9 @@ class FFmpegCommandBuilder:
     def build(self, job: ConversionJob) -> list[str]:
         """Return argv with common options, then format-specific ones.
 
-        MP4 loop-count jobs resolve a hardware encoder via EncoderResolver.
-        Duration-limited MP4 (``-t``) is T3-3 and is not assembled here.
+        MP4 jobs resolve a hardware encoder via EncoderResolver. Loop-count
+        uses ``-stream_loop N-1``; duration uses infinite input loop plus
+        output ``-t``.
         """
 
         argv = [str(resolve_ffmpeg())]
@@ -47,21 +48,20 @@ class FFmpegCommandBuilder:
         return argv
 
     def _mp4_stream_loop_args(self, job: ConversionJob) -> list[str]:
-        """Map playback loops N to FFmpeg ``-stream_loop N-1`` before ``-i``.
+        """Emit ``-stream_loop`` before ``-i`` for MP4 playback length.
 
-        FFmpeg's ``-stream_loop`` is the number of *extra* repeats, not the
-        total play count. Playing the GIF N times therefore needs ``N-1``.
-        N=1 → ``-stream_loop 0`` (equivalent to omitting the flag; always
-        emitted so the off-by-one mapping stays visible in argv and tests).
-        Duration mode (``-stream_loop -1`` plus ``-t``) is T3-3, not here.
+        Loop-count N maps to extra repeats ``N-1`` (FFmpeg counts extra
+        plays, not total plays). N=1 → ``-stream_loop 0`` (equivalent to
+        omitting the flag; always emitted so the off-by-one mapping stays
+        visible in argv and tests). Duration T uses infinite input loop
+        (``-stream_loop -1``) so a short GIF repeats until ``-t T``.
         """
 
         options = _mp4_options(job)
+        if options.duration_seconds is not None:
+            return ["-stream_loop", "-1"]
         loop_count = options.loop_count
-        if loop_count is None:
-            raise NotImplementedError(
-                "MP4 duration encoding is not implemented yet; conversion was not started."
-            )
+        assert loop_count is not None
         extra_repeats = loop_count - 1
         return ["-stream_loop", str(extra_repeats)]
 
@@ -69,10 +69,6 @@ class FFmpegCommandBuilder:
         if job.output_format is not OutputFormat.MP4:
             return []
         options = _mp4_options(job)
-        if options.duration_seconds is not None:
-            raise NotImplementedError(
-                "MP4 duration encoding is not implemented yet; conversion was not started."
-            )
         encoder = EncoderResolver().resolve()
         if encoder is None:
             # Service fail-closes first; builder never falls back to libx264.
@@ -80,16 +76,26 @@ class FFmpegCommandBuilder:
                 ErrorCode.ENCODER_UNAVAILABLE,
                 detail="bundled ffmpeg has no hardware H.264 encoder",
             )
-        return [
+        argv = [
             "-c:v",
             encoder.name,
             "-an",
             "-movflags",
             "+faststart",
         ]
+        if options.duration_seconds is not None:
+            argv.extend(["-t", _format_duration(options.duration_seconds)])
+        return argv
 
 
 def _mp4_options(job: ConversionJob) -> MP4Options:
     if not isinstance(job.output, MP4Output):
         raise TypeError("MP4 argv requires an MP4Output job")
     return job.output.options
+
+
+def _format_duration(seconds: float) -> str:
+    """Render seconds for FFmpeg ``-t`` without scientific notation."""
+
+    text = format(seconds, "g")
+    return text if text else str(seconds)

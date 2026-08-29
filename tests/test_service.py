@@ -231,11 +231,18 @@ class ConversionServiceMp4Test(unittest.TestCase):
     )
     @patch("subprocess.Popen")
     @patch("subprocess.run")
-    def test_mp4_with_encoder_still_does_not_encode(
+    def test_mp4_duration_with_encoder_still_does_not_encode(
         self, run, popen, _resolve_encoder, _resolve_ffmpeg
     ) -> None:
+        job = ConversionJob(
+            input_path="in.gif",
+            output=MP4Output(
+                options=MP4Options(duration_seconds=2.0),
+                output_path="out.mp4",
+            ),
+        )
         with self.assertRaises(NotImplementedError):
-            self.service.convert(_mp4_job())
+            self.service.convert(job)
         run.assert_not_called()
         popen.assert_not_called()
 

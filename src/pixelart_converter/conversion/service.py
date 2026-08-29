@@ -8,14 +8,15 @@ from pixelart_converter.conversion.binary import resolve_ffmpeg
 from pixelart_converter.conversion.command import FFmpegCommandBuilder
 from pixelart_converter.conversion.encoder import EncoderResult, resolve_encoder
 from pixelart_converter.errors import ConversionError, ErrorCode
-from pixelart_converter.models import ConversionJob, OutputFormat
+from pixelart_converter.models import ConversionJob, MP4Output, OutputFormat
 
 
 class ConversionService:
     """Validate that a job can run, then convert.
 
-    GIF conversion supports the common Phase 3 options. Format-specific
-    conversion pipelines remain unavailable until their respective tasks.
+    GIF conversion supports the common Phase 3 options. MP4 loop-count
+    jobs encode with the hardware encoder selected at preflight. Duration
+    MP4 and still-image pipelines remain unavailable until later tasks.
     """
 
     def preflight(self, job: ConversionJob) -> EncoderResult | None:
@@ -33,8 +34,10 @@ class ConversionService:
     def convert(self, job: ConversionJob) -> None:
         """Preflight, then encode.
 
-        GIF output uses the common command builder. Other formats still run
-        preflight so MP4 fails closed when no hardware encoder is available.
+        GIF output uses the common command builder. MP4 loop-count jobs
+        invoke the builder (hardware ``-c:v`` only) and a mockable
+        subprocess. Other formats still run preflight so MP4 fails closed
+        when no hardware encoder is available. Duration MP4 is T3-3.
         """
         if job.output_format is OutputFormat.GIF:
             argv = FFmpegCommandBuilder().build(job)
@@ -42,6 +45,15 @@ class ConversionService:
             return
 
         self.preflight(job)
+        if (
+            job.output_format is OutputFormat.MP4
+            and isinstance(job.output, MP4Output)
+            and job.output.options.loop_count is not None
+        ):
+            argv = FFmpegCommandBuilder().build(job)
+            subprocess.run(argv, check=True)
+            return
+
         raise NotImplementedError(
             "This output format is not implemented yet; conversion was not started."
         )

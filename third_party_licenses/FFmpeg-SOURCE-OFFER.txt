@@ -1,0 +1,62 @@
+FFmpeg — LGPL Source Code Offer
+================================
+
+This application bundles an FFmpeg binary built from upstream sources under
+the GNU Lesser General Public License, version 2.1 or later (LGPL-2.1+).
+Under LGPL, recipients of this software must be able to obtain the
+corresponding source code for the exact version used to produce the bundled
+binary.
+
+Pinned upstream version
+-----------------------
+The bundled FFmpeg is built from upstream release **7.1.1** (git tag `n7.1.1`).
+
+Official source archive (unchanged upstream)
+--------------------------------------------
+    https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz
+
+This is the same tarball URL recorded in the repository at:
+
+    vendor/ffmpeg/build_flags.txt   (keys: version, source_url)
+
+How this project configures and builds FFmpeg
+-----------------------------------------------
+Configure flags, platform-specific options, and build instructions are
+documented in the repository:
+
+    vendor/ffmpeg/README.md
+    vendor/ffmpeg/build_flags.txt
+
+Third parties can reproduce the bundled binary using the in-repo script:
+
+    scripts/build_ffmpeg_lgpl.sh
+
+On macOS, run `scripts/build_ffmpeg_lgpl.sh` (see the README for Windows /
+MSYS2 steps). The script reads `build_flags.txt`, downloads the tarball above,
+and installs `ffmpeg` / `ffprobe` under `vendor/ffmpeg/<platform>/`.
+Each build also writes `BUILD-INFO.txt` next to the binaries with the source
+URL, SHA-256 digest, and exact `./configure` line used.
+
+Written offer (LGPL compliance)
+-------------------------------
+For at least **three (3) years** from the date you received this software,
+we offer to provide, to any recipient of this application, the complete
+corresponding source code needed to rebuild the bundled FFmpeg binary at no
+more than the cost of physically performing source distribution.
+
+You may obtain that source by:
+
+  1. Downloading the official release tarball at the URL above; and
+  2. Applying the configure flags and build steps in
+     `vendor/ffmpeg/README.md` and `vendor/ffmpeg/build_flags.txt`, or
+     running `scripts/build_ffmpeg_lgpl.sh` from a checkout of this
+     repository at the same release tag or commit that produced your copy
+     of the application.
+
+If the upstream URL is unavailable, contact the application distributor with
+the product name, version, and platform; we will supply the source archive or
+equivalent written instructions within a reasonable time.
+
+No modifications to upstream FFmpeg source are required to reproduce the
+bundled binary; if a future release applies patches, those patches will be
+included alongside this offer.

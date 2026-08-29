@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pixelart_converter"
+version = "0.1.0"
+description = "Desktop app that converts GIF to MP4/JPEG/PNG/GIF, aimed at pixel art."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # Essentials provides `import PySide6` (QtWidgets). The PySide6
+    # metapackage also pulls Addons (~300MB), which this empty window does not need.
+    "PySide6-Essentials>=6.7,<7",
+    "Pillow>=10.4,<12",
+]
+
+[project.scripts]
+pixelart-converter = "pixelart_converter.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

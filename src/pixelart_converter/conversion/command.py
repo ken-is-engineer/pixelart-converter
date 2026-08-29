@@ -28,15 +28,20 @@ class FFmpegCommandBuilder:
 
         MP4 jobs resolve a hardware encoder via EncoderResolver. Loop-count
         uses ``-stream_loop N-1``; duration uses infinite input loop plus
-        output ``-t``.
+        output ``-t``. GIF re-encodes with a split-filter palettegen/paletteuse
+        graph (one process, two passes) so resized output keeps a global
+        palette instead of a naive 256-color quantize.
         """
 
         argv = [str(resolve_ffmpeg())]
         argv.extend(self._input_args(job))
 
-        filters = self._video_filters(job)
-        if filters:
-            argv.extend(["-vf", ",".join(filters)])
+        if job.output_format is OutputFormat.GIF:
+            argv.extend(self._gif_filter_args(job))
+        else:
+            filters = self._video_filters(job)
+            if filters:
+                argv.extend(["-vf", ",".join(filters)])
 
         common = job.common
         if common.strip_metadata:
@@ -68,14 +73,37 @@ class FFmpegCommandBuilder:
                         expressions.append(f"eq(n,{item})")
                 filters.append(f"select='{'+'.join(expressions)}'")
 
-        common = job.common
-        if common.width is not None or common.height is not None:
-            width = common.width if common.width is not None else -1
-            height = common.height if common.height is not None else -1
-            filters.append(
-                f"scale={width}:{height}:flags={common.scale_algorithm.value}"
-            )
+        scale = self._scale_filter(job)
+        if scale is not None:
+            filters.append(scale)
         return filters
+
+    def _scale_filter(self, job: ConversionJob) -> str | None:
+        common = job.common
+        if common.width is None and common.height is None:
+            return None
+        width = common.width if common.width is not None else -1
+        height = common.height if common.height is not None else -1
+        return f"scale={width}:{height}:flags={common.scale_algorithm.value}"
+
+    def _gif_filter_args(self, job: ConversionJob) -> list[str]:
+        """Build a 1-process 2-pass palette graph; scale runs before split.
+
+        ``paletteuse=dither=none`` keeps pixel-art edges crisp. Per-frame
+        delay is left to PTS passthrough (``-vsync 0`` in format args) rather
+        than an ``fps`` filter or ``-r``, which would rewrite GIF timing.
+        """
+
+        chain: list[str] = []
+        scale = self._scale_filter(job)
+        if scale is not None:
+            chain.append(scale)
+        chain.append("split[s0][s1]")
+        graph = (
+            f"[0:v]{','.join(chain)};[s0]palettegen[p];"
+            f"[s1][p]paletteuse=dither=none"
+        )
+        return ["-filter_complex", graph]
 
     def _mp4_stream_loop_args(self, job: ConversionJob) -> list[str]:
         """Emit ``-stream_loop`` before ``-i`` for MP4 playback length.
@@ -96,6 +124,8 @@ class FFmpegCommandBuilder:
         return ["-stream_loop", str(extra_repeats)]
 
     def _format_output_args(self, job: ConversionJob) -> list[str]:
+        if job.output_format is OutputFormat.GIF:
+            return ["-vsync", "0"]
         if isinstance(job.output, (JPEGOutput, PNGOutput)):
             if isinstance(job.output.frames, SingleFrame):
                 return ["-frames:v", "1"]

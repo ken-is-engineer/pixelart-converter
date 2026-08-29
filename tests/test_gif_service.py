@@ -1,4 +1,4 @@
-"""Unit tests for the T3-1 GIF conversion subprocess."""
+"""Unit tests for the T3-6 GIF conversion subprocess."""
 
 from __future__ import annotations
 
@@ -31,10 +31,13 @@ class ConversionServiceGifTest(unittest.TestCase):
                 "/bundled/ffmpeg",
                 "-i",
                 "in.gif",
-                "-vf",
-                "scale=16:12:flags=neighbor",
+                "-filter_complex",
+                "[0:v]scale=16:12:flags=neighbor,split[s0][s1];"
+                "[s0]palettegen[p];[s1][p]paletteuse=dither=none",
                 "-map_metadata",
                 "-1",
+                "-vsync",
+                "0",
                 "out.gif",
             ],
             check=True,

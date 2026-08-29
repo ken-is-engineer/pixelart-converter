@@ -1,7 +1,8 @@
-"""Unit tests for common FFmpeg argv construction (T3-1).
+"""Unit tests for common FFmpeg argv construction (T3-1, T3-6).
 
 Visual resize and ffprobe metadata checks are deferred when no bundled binary
 is present; these tests intentionally verify argv without requiring FFmpeg.
+GIF jobs use a split-filter palette graph rather than a naive ``-vf`` encode.
 """
 
 from __future__ import annotations
@@ -27,6 +28,10 @@ def _job(*, common: CommonOptions | None = None) -> ConversionJob:
     )
 
 
+def _filter_complex(argv: list[str]) -> str:
+    return argv[argv.index("-filter_complex") + 1]
+
+
 class FFmpegCommandBuilderTest(unittest.TestCase):
     def setUp(self) -> None:
         resolver = patch(
@@ -48,7 +53,7 @@ class FFmpegCommandBuilderTest(unittest.TestCase):
             _job(common=CommonOptions(width=32, height=24))
         )
 
-        self.assertIn("scale=32:24:flags=neighbor", argv)
+        self.assertIn("scale=32:24:flags=neighbor", _filter_complex(argv))
 
     def test_bilinear_and_bicubic_flags_are_used(self) -> None:
         for algorithm in (ScaleAlgorithm.BILINEAR, ScaleAlgorithm.BICUBIC):
@@ -62,12 +67,15 @@ class FFmpegCommandBuilderTest(unittest.TestCase):
                         )
                     )
                 )
-                self.assertIn(f"scale=32:24:flags={algorithm.value}", argv)
+                self.assertIn(
+                    f"scale=32:24:flags={algorithm.value}",
+                    _filter_complex(argv),
+                )
 
     def test_one_omitted_dimension_preserves_aspect_ratio(self) -> None:
         argv = self.builder.build(_job(common=CommonOptions(width=32)))
 
-        self.assertIn("scale=32:-1:flags=neighbor", argv)
+        self.assertIn("scale=32:-1:flags=neighbor", _filter_complex(argv))
 
     def test_strip_metadata_adds_map_metadata_minus_one(self) -> None:
         argv = self.builder.build(
@@ -97,6 +105,56 @@ class FFmpegCommandBuilderTest(unittest.TestCase):
         self.resolve_ffmpeg.assert_called_once_with()
         self.assertEqual(argv[0], "/bundled/ffmpeg")
         self.assertNotEqual(argv[0], "ffmpeg")
+
+
+class FFmpegCommandBuilderGifPaletteTest(unittest.TestCase):
+    def setUp(self) -> None:
+        resolver = patch(
+            "pixelart_converter.conversion.command.resolve_ffmpeg",
+            return_value=Path("/bundled/ffmpeg"),
+        )
+        self.resolve_ffmpeg = resolver.start()
+        self.addCleanup(resolver.stop)
+        self.builder = FFmpegCommandBuilder()
+
+    def test_argv_contains_palettegen_and_paletteuse(self) -> None:
+        argv = self.builder.build(_job())
+
+        graph = _filter_complex(argv)
+        self.assertIn("palettegen", graph)
+        self.assertIn("paletteuse", graph)
+        self.assertIn("split", graph)
+        self.assertNotIn("-vf", argv)
+
+    def test_scale_runs_before_split_in_the_palette_graph(self) -> None:
+        argv = self.builder.build(
+            _job(common=CommonOptions(width=32, height=24))
+        )
+
+        graph = _filter_complex(argv)
+        scale_at = graph.index("scale=32:24:flags=neighbor")
+        split_at = graph.index("split")
+        palettegen_at = graph.index("palettegen")
+        paletteuse_at = graph.index("paletteuse")
+        self.assertLess(scale_at, split_at)
+        self.assertLess(split_at, palettegen_at)
+        self.assertLess(palettegen_at, paletteuse_at)
+
+    def test_strip_metadata_still_emits_map_metadata(self) -> None:
+        argv = self.builder.build(
+            _job(common=CommonOptions(width=16, height=12, strip_metadata=True))
+        )
+
+        self.assertEqual(argv[argv.index("-map_metadata") + 1], "-1")
+        self.assertIn("palettegen", _filter_complex(argv))
+        self.assertIn("paletteuse", _filter_complex(argv))
+
+    def test_vsync_passthrough_preserves_gif_frame_delay(self) -> None:
+        argv = self.builder.build(_job())
+
+        self.assertEqual(argv[argv.index("-vsync") + 1], "0")
+        self.assertNotIn("-r", argv)
+        self.assertNotIn("fps=", _filter_complex(argv))
 
 
 if __name__ == "__main__":

@@ -1,8 +1,11 @@
-"""ConversionService: preflight bundled FFmpeg and fail MP4 without a HW encoder."""
+"""ConversionService: preflight jobs and run supported FFmpeg conversions."""
 
 from __future__ import annotations
 
+import subprocess
+
 from pixelart_converter.conversion.binary import resolve_ffmpeg
+from pixelart_converter.conversion.command import FFmpegCommandBuilder
 from pixelart_converter.conversion.encoder import EncoderResult, resolve_encoder
 from pixelart_converter.errors import ConversionError, ErrorCode
 from pixelart_converter.models import ConversionJob, OutputFormat
@@ -13,9 +16,8 @@ _ALLOWED_MP4_ENCODERS = frozenset({"h264_videotoolbox", "h264_mf"})
 class ConversionService:
     """Validate that a job can run, then convert.
 
-    Encode argv and the FFmpeg subprocess belong to Phase 3. This task only
-    refuses to start an MP4 conversion when no hardware H.264 encoder exists,
-    and never falls back to PATH or GPL ffmpeg.
+    GIF conversion supports the common Phase 3 options. Format-specific
+    conversion pipelines remain unavailable until their respective tasks.
     """
 
     def preflight(self, job: ConversionJob) -> EncoderResult | None:
@@ -33,12 +35,23 @@ class ConversionService:
     def convert(self, job: ConversionJob) -> None:
         """Preflight, then encode.
 
-        Encoding is not implemented yet (T3). Preflight still fails closed
-        so a missing encoder never reaches a conversion subprocess.
+        GIF output uses the common command builder. Other formats still run
+        preflight so MP4 fails closed when no hardware encoder is available.
         """
+        if job.output_format is OutputFormat.GIF:
+            argv = FFmpegCommandBuilder().build(job)
+            try:
+                subprocess.run(argv, check=True)
+            except subprocess.CalledProcessError as exc:
+                raise ConversionError.from_code(
+                    ErrorCode.UNKNOWN,
+                    detail=f"ffmpeg exited {exc.returncode}",
+                ) from exc
+            return
+
         self.preflight(job)
         raise NotImplementedError(
-            "FFmpeg encode is not implemented yet; conversion was not started."
+            "This output format is not implemented yet; conversion was not started."
         )
 
     def _preflight_mp4(self) -> EncoderResult:

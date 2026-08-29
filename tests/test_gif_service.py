@@ -29,6 +29,8 @@ class ConversionServiceGifTest(unittest.TestCase):
         run.assert_called_once_with(
             [
                 "/bundled/ffmpeg",
+                "-nostdin",
+                "-y",
                 "-i",
                 "in.gif",
                 "-vf",

@@ -190,7 +190,8 @@ class ConversionServiceMp4Test(unittest.TestCase):
 
         error = ctx.exception
         self.assertEqual(error.code, ErrorCode.ENCODER_UNAVAILABLE)
-        self.assertEqual(error.message, user_message_for(ErrorCode.ENCODER_UNAVAILABLE))
+        self.assertIn("bundled ffmpeg", error.message.lower())
+        self.assertNotEqual(error.message, user_message_for(ErrorCode.ENCODER_UNAVAILABLE))
         _assert_no_system_ffmpeg_advice(error.message)
         resolve_encoder.assert_not_called()
         run.assert_not_called()
@@ -207,7 +208,7 @@ class ConversionServiceMp4Test(unittest.TestCase):
     @patch("pixelart_converter.conversion.service.resolve_encoder")
     @patch("subprocess.Popen")
     @patch("subprocess.run")
-    def test_mp4_missing_ffmpeg_uses_hw_message_not_system_advice(
+    def test_mp4_missing_ffmpeg_keeps_binary_message(
         self, run, popen, resolve_encoder, _resolve_ffmpeg
     ) -> None:
         with self.assertRaises(ConversionError) as ctx:
@@ -215,7 +216,8 @@ class ConversionServiceMp4Test(unittest.TestCase):
 
         error = ctx.exception
         self.assertEqual(error.code, ErrorCode.ENCODER_UNAVAILABLE)
-        self.assertEqual(error.message, user_message_for(ErrorCode.ENCODER_UNAVAILABLE))
+        self.assertIn("bundled ffmpeg", error.message.lower())
+        self.assertNotIn("hardware encoder", error.message.lower())
         _assert_no_system_ffmpeg_advice(error.message)
         resolve_encoder.assert_not_called()
         run.assert_not_called()

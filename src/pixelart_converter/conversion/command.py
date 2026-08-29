@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pixelart_converter.conversion.binary import resolve_ffmpeg
-from pixelart_converter.conversion.encoder import EncoderResolver
+from pixelart_converter.conversion.encoder import ALLOWED_MP4_ENCODERS, EncoderResolver
 from pixelart_converter.errors import ConversionError, ErrorCode
 from pixelart_converter.models import ConversionJob, MP4Options, MP4Output, OutputFormat
 
@@ -18,7 +18,7 @@ class FFmpegCommandBuilder:
         Duration-limited MP4 (``-t``) is T3-3 and is not assembled here.
         """
 
-        argv = [str(resolve_ffmpeg())]
+        argv = [str(resolve_ffmpeg()), "-nostdin", "-y"]
         argv.extend(self._input_args(job))
 
         common = job.common
@@ -74,11 +74,14 @@ class FFmpegCommandBuilder:
                 "MP4 duration encoding is not implemented yet; conversion was not started."
             )
         encoder = EncoderResolver().resolve()
-        if encoder is None:
-            # Service fail-closes first; builder never falls back to libx264.
+        if encoder is None or encoder.name not in ALLOWED_MP4_ENCODERS:
             raise ConversionError.from_code(
                 ErrorCode.ENCODER_UNAVAILABLE,
-                detail="bundled ffmpeg has no hardware H.264 encoder",
+                detail=(
+                    "bundled ffmpeg has no hardware H.264 encoder"
+                    if encoder is None
+                    else f"refusing encoder {encoder.name!r}"
+                ),
             )
         return [
             "-c:v",

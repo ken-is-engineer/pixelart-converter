@@ -96,6 +96,7 @@ class FFmpegCommandBuilderTest(unittest.TestCase):
 
         self.resolve_ffmpeg.assert_called_once_with()
         self.assertEqual(argv[0], "/bundled/ffmpeg")
+        self.assertEqual(argv[1:3], ["-nostdin", "-y"])
         self.assertNotEqual(argv[0], "ffmpeg")
 
 

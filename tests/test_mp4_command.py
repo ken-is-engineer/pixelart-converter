@@ -1,7 +1,8 @@
-"""Unit tests for MP4 loop-count FFmpeg argv (T3-2).
+"""Unit tests for MP4 loop-count and duration FFmpeg argv (T3-2, T3-3).
 
 No real FFmpeg binary is required: encoder resolution and the bundled
-path are mocked. Duration ``-t`` is T3-3 and must not appear here.
+path are mocked. Duration jobs use ``-stream_loop -1`` and output ``-t``;
+loop-count jobs must not emit ``-t``.
 """
 
 from __future__ import annotations
@@ -110,10 +111,43 @@ class FFmpegCommandBuilderMp4LoopTest(unittest.TestCase):
         self.assertNotIn("-t", argv)
         self.assertNotIn("-stream_loop", argv[argv.index("-i") :])
 
-    def test_duration_job_is_not_assembled(self) -> None:
-        with self.assertRaises(NotImplementedError):
-            self.builder.build(_mp4_job(duration_seconds=2.5))
-        self.encoder_cls.return_value.resolve.assert_not_called()
+    def test_duration_2_5_emits_infinite_loop_and_output_t(self) -> None:
+        argv = self.builder.build(_mp4_job(duration_seconds=2.5))
+
+        i_index = argv.index("-i")
+        self.assertEqual(argv[i_index - 2], "-stream_loop")
+        self.assertEqual(argv[i_index - 1], "-1")
+        self.assertEqual(argv[i_index + 1], "in.gif")
+        self.assertNotIn("-t", argv[:i_index])
+        t_index = argv.index("-t")
+        self.assertGreater(t_index, i_index)
+        self.assertEqual(argv[t_index + 1], "2.5")
+        self.assertNotIn("libx264", argv)
+
+    def test_duration_uses_hw_encoder_and_no_audio(self) -> None:
+        for name in ("h264_videotoolbox", "h264_mf"):
+            with self.subTest(encoder=name):
+                self.encoder_cls.return_value.resolve.return_value = EncoderResult(
+                    name=name
+                )
+                argv = self.builder.build(_mp4_job(duration_seconds=2.5))
+                self.assertEqual(argv[argv.index("-c:v") + 1], name)
+                self.assertIn("-an", argv)
+                self.assertEqual(argv[argv.index("-movflags") + 1], "+faststart")
+                self.assertNotIn("libx264", argv)
+                self.assertFalse(any("libx264" in arg for arg in argv))
+
+    def test_duration_keeps_common_scale_and_metadata(self) -> None:
+        argv = self.builder.build(
+            _mp4_job(
+                duration_seconds=2.5,
+                common=CommonOptions(width=32, height=24, strip_metadata=True),
+            )
+        )
+
+        self.assertIn("scale=32:24:flags=neighbor", argv)
+        self.assertEqual(argv[argv.index("-map_metadata") + 1], "-1")
+        self.assertEqual(argv[argv.index("-t") + 1], "2.5")
 
     def test_uses_bundled_resolver_and_never_path_ffmpeg(self) -> None:
         with patch(
@@ -127,6 +161,19 @@ class FFmpegCommandBuilderMp4LoopTest(unittest.TestCase):
         self.assertEqual(argv[1:3], ["-nostdin", "-y"])
         self.assertNotEqual(argv[0], "ffmpeg")
 
+    def test_duration_uses_bundled_resolver_and_never_path_ffmpeg(self) -> None:
+        with patch(
+            "shutil.which",
+            side_effect=AssertionError("must not search PATH"),
+        ):
+            argv = self.builder.build(_mp4_job(duration_seconds=2.5))
+
+        self.resolve_ffmpeg.assert_called_once_with()
+        self.assertEqual(argv[0], "/bundled/ffmpeg")
+        self.assertEqual(argv[1:3], ["-nostdin", "-y"])
+        self.assertNotEqual(argv[0], "ffmpeg")
+        self.assertNotIn("libx264", argv)
+
     def test_libx264_from_resolver_is_refused(self) -> None:
         self.encoder_cls.return_value.resolve.return_value = EncoderResult(
             name="libx264"
@@ -135,6 +182,12 @@ class FFmpegCommandBuilderMp4LoopTest(unittest.TestCase):
             self.builder.build(_mp4_job(loop_count=3))
         self.assertEqual(ctx.exception.code, ErrorCode.ENCODER_UNAVAILABLE)
         self.assertIn("libx264", ctx.exception.detail or "")
+
+    def test_tiny_duration_does_not_use_scientific_notation(self) -> None:
+        argv = self.builder.build(_mp4_job(duration_seconds=1e-5))
+        value = argv[argv.index("-t") + 1]
+        self.assertNotIn("e", value.lower())
+        self.assertEqual(float(value), 1e-5)
 
 
 if __name__ == "__main__":

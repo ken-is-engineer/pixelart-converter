@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pixelart_converter.conversion.binary import resolve_ffmpeg
 from pixelart_converter.conversion.encoder import EncoderResolver
 from pixelart_converter.errors import ConversionError, ErrorCode
 from pixelart_converter.models import (
     ConversionJob,
+    FrameRange,
     JPEGOutput,
     MP4Options,
     MP4Output,
+    MultipleFrames,
     OutputFormat,
     PNGOutput,
     SingleFrame,
@@ -39,7 +43,7 @@ class FFmpegCommandBuilder:
             argv.extend(["-map_metadata", "-1"])
 
         argv.extend(self._format_output_args(job))
-        argv.append(str(job.resolved_output_path()))
+        argv.append(str(self._output_path(job)))
         return argv
 
     def _input_args(self, job: ConversionJob) -> list[str]:
@@ -51,10 +55,18 @@ class FFmpegCommandBuilder:
 
     def _video_filters(self, job: ConversionJob) -> list[str]:
         filters: list[str] = []
-        if isinstance(job.output, (JPEGOutput, PNGOutput)) and isinstance(
-            job.output.frames, SingleFrame
-        ):
-            filters.append(f"select='eq(n,{job.output.frames.index})'")
+        if isinstance(job.output, (JPEGOutput, PNGOutput)):
+            selection = job.output.frames
+            if isinstance(selection, SingleFrame):
+                filters.append(f"select='eq(n,{selection.index})'")
+            elif isinstance(selection, MultipleFrames):
+                expressions = []
+                for item in selection.items:
+                    if isinstance(item, FrameRange):
+                        expressions.append(f"between(n,{item.start},{item.end})")
+                    else:
+                        expressions.append(f"eq(n,{item})")
+                filters.append(f"select='{'+'.join(expressions)}'")
 
         common = job.common
         if common.width is not None or common.height is not None:
@@ -84,10 +96,10 @@ class FFmpegCommandBuilder:
         return ["-stream_loop", str(extra_repeats)]
 
     def _format_output_args(self, job: ConversionJob) -> list[str]:
-        if isinstance(job.output, (JPEGOutput, PNGOutput)) and isinstance(
-            job.output.frames, SingleFrame
-        ):
-            return ["-frames:v", "1"]
+        if isinstance(job.output, (JPEGOutput, PNGOutput)):
+            if isinstance(job.output.frames, SingleFrame):
+                return ["-frames:v", "1"]
+            return ["-vsync", "0", "-start_number", "0"]
         if job.output_format is not OutputFormat.MP4:
             return []
         options = _mp4_options(job)
@@ -108,6 +120,16 @@ class FFmpegCommandBuilder:
         if options.duration_seconds is not None:
             argv.extend(["-t", _format_duration(options.duration_seconds)])
         return argv
+
+    def _output_path(self, job: ConversionJob) -> Path:
+        output_path = job.resolved_output_path()
+        if not isinstance(job.output, (JPEGOutput, PNGOutput)) or isinstance(
+            job.output.frames, SingleFrame
+        ):
+            return output_path
+        return output_path.with_name(
+            f"{output_path.stem}_%03d{output_path.suffix}"
+        )
 
 
 def _mp4_options(job: ConversionJob) -> MP4Options:

@@ -7,6 +7,8 @@ from pixelart_converter.conversion.encoder import EncoderResult, resolve_encoder
 from pixelart_converter.errors import ConversionError, ErrorCode
 from pixelart_converter.models import ConversionJob, OutputFormat
 
+_ALLOWED_MP4_ENCODERS = frozenset({"h264_videotoolbox", "h264_mf"})
+
 
 class ConversionService:
     """Validate that a job can run, then convert.
@@ -40,16 +42,17 @@ class ConversionService:
         )
 
     def _preflight_mp4(self) -> EncoderResult:
-        try:
-            resolve_ffmpeg()
-        except ConversionError as exc:
-            if exc.code is ErrorCode.ENCODER_UNAVAILABLE:
-                raise _mp4_encoder_unavailable(detail=exc.detail) from exc
-            raise
+        # Missing bundled binary is a different failure from "HW encoder
+        # listed but unavailable". Do not rewrite the user message.
+        resolve_ffmpeg()
         encoder = resolve_encoder()
-        if encoder is None:
+        if encoder is None or encoder.name not in _ALLOWED_MP4_ENCODERS:
             raise _mp4_encoder_unavailable(
-                detail="bundled ffmpeg has no hardware H.264 encoder",
+                detail=(
+                    "bundled ffmpeg has no hardware H.264 encoder"
+                    if encoder is None
+                    else f"refusing encoder {encoder.name!r}"
+                ),
             )
         return encoder
 

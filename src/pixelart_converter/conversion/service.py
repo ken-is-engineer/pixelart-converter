@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import subprocess
 
+from PIL import Image
+
 from pixelart_converter.conversion.binary import resolve_ffmpeg
 from pixelart_converter.conversion.command import FFmpegCommandBuilder
 from pixelart_converter.conversion.encoder import EncoderResult, resolve_encoder
 from pixelart_converter.errors import ConversionError, ErrorCode
-from pixelart_converter.models import ConversionJob, OutputFormat
+from pixelart_converter.models import (
+    ConversionJob,
+    JPEGOutput,
+    OutputFormat,
+    PNGOutput,
+    SingleFrame,
+)
 
 
 class ConversionService:
@@ -16,7 +24,7 @@ class ConversionService:
 
     GIF conversion supports the common Phase 3 options. MP4 loop-count
     and duration jobs encode with the hardware encoder selected at
-    preflight. Still-image pipelines remain unavailable until later tasks.
+    preflight. JPEG and PNG support one validated, zero-based frame.
     """
 
     def preflight(self, job: ConversionJob) -> EncoderResult | None:
@@ -36,10 +44,21 @@ class ConversionService:
 
         GIF output uses the common command builder. MP4 jobs invoke the
         builder (hardware ``-c:v`` only) and a mockable subprocess.
-        Other formats still run preflight so MP4 fails closed when no
-        hardware encoder is available.
+        Single-frame JPEG/PNG jobs validate the GIF and requested index
+        before resolving or starting FFmpeg.
         """
         if job.output_format is OutputFormat.GIF:
+            argv = FFmpegCommandBuilder().build(job)
+            subprocess.run(argv, check=True)
+            return
+
+        if isinstance(job.output, (JPEGOutput, PNGOutput)):
+            if not isinstance(job.output.frames, SingleFrame):
+                raise NotImplementedError(
+                    "Multi-frame still-image output is not implemented yet."
+                )
+            self._validate_single_frame(job)
+            self.preflight(job)
             argv = FFmpegCommandBuilder().build(job)
             subprocess.run(argv, check=True)
             return
@@ -53,6 +72,36 @@ class ConversionService:
         raise NotImplementedError(
             "This output format is not implemented yet; conversion was not started."
         )
+
+    def _validate_single_frame(self, job: ConversionJob) -> None:
+        output = job.output
+        assert isinstance(output, (JPEGOutput, PNGOutput))
+        frames = output.frames
+        assert isinstance(frames, SingleFrame)
+
+        try:
+            with Image.open(job.input_path) as image:
+                if image.format != "GIF":
+                    raise ConversionError.from_code(
+                        ErrorCode.INVALID_INPUT,
+                        detail=f"input format is {image.format!r}, expected GIF",
+                    )
+                frame_count = image.n_frames
+        except (OSError, ValueError) as exc:
+            raise ConversionError.from_code(
+                ErrorCode.INVALID_INPUT,
+                detail=f"could not read GIF frame count: {exc}",
+            ) from exc
+
+        if frames.index >= frame_count:
+            raise ConversionError.from_code(
+                ErrorCode.INVALID_INPUT,
+                message=(
+                    f"Frame index {frames.index} is out of range for a GIF "
+                    f"with {frame_count} frame(s)."
+                ),
+                detail=f"requested frame {frames.index}; frame count is {frame_count}",
+            )
 
     def _preflight_mp4(self) -> EncoderResult:
         try:

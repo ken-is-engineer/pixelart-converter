@@ -5,7 +5,15 @@ from __future__ import annotations
 from pixelart_converter.conversion.binary import resolve_ffmpeg
 from pixelart_converter.conversion.encoder import EncoderResolver
 from pixelart_converter.errors import ConversionError, ErrorCode
-from pixelart_converter.models import ConversionJob, MP4Options, MP4Output, OutputFormat
+from pixelart_converter.models import (
+    ConversionJob,
+    JPEGOutput,
+    MP4Options,
+    MP4Output,
+    OutputFormat,
+    PNGOutput,
+    SingleFrame,
+)
 
 
 class FFmpegCommandBuilder:
@@ -22,17 +30,11 @@ class FFmpegCommandBuilder:
         argv = [str(resolve_ffmpeg())]
         argv.extend(self._input_args(job))
 
-        common = job.common
-        if common.width is not None or common.height is not None:
-            width = common.width if common.width is not None else -1
-            height = common.height if common.height is not None else -1
-            argv.extend(
-                [
-                    "-vf",
-                    f"scale={width}:{height}:flags={common.scale_algorithm.value}",
-                ]
-            )
+        filters = self._video_filters(job)
+        if filters:
+            argv.extend(["-vf", ",".join(filters)])
 
+        common = job.common
         if common.strip_metadata:
             argv.extend(["-map_metadata", "-1"])
 
@@ -46,6 +48,22 @@ class FFmpegCommandBuilder:
             argv.extend(self._mp4_stream_loop_args(job))
         argv.extend(["-i", str(job.input_path)])
         return argv
+
+    def _video_filters(self, job: ConversionJob) -> list[str]:
+        filters: list[str] = []
+        if isinstance(job.output, (JPEGOutput, PNGOutput)) and isinstance(
+            job.output.frames, SingleFrame
+        ):
+            filters.append(f"select='eq(n,{job.output.frames.index})'")
+
+        common = job.common
+        if common.width is not None or common.height is not None:
+            width = common.width if common.width is not None else -1
+            height = common.height if common.height is not None else -1
+            filters.append(
+                f"scale={width}:{height}:flags={common.scale_algorithm.value}"
+            )
+        return filters
 
     def _mp4_stream_loop_args(self, job: ConversionJob) -> list[str]:
         """Emit ``-stream_loop`` before ``-i`` for MP4 playback length.
@@ -66,6 +84,10 @@ class FFmpegCommandBuilder:
         return ["-stream_loop", str(extra_repeats)]
 
     def _format_output_args(self, job: ConversionJob) -> list[str]:
+        if isinstance(job.output, (JPEGOutput, PNGOutput)) and isinstance(
+            job.output.frames, SingleFrame
+        ):
+            return ["-frames:v", "1"]
         if job.output_format is not OutputFormat.MP4:
             return []
         options = _mp4_options(job)

@@ -50,6 +50,7 @@ scripts/build_ffmpeg_lgpl.sh                 # ビルドして vendor/ffmpeg/mac
 | [docs/design.md](docs/design.md) | アーキテクチャ、UI、変換パイプライン、同梱方針 |
 | [docs/tasks.md](docs/tasks.md) | 実装フェーズと完了条件 |
 | [docs/packaging.md](docs/packaging.md) | macOS 署名なし `.app` のビルドと Gatekeeper |
+| [docs/signing.md](docs/signing.md) | コード署名・公証の将来方針（T5-4） |
 | [vendor/ffmpeg/README.md](vendor/ffmpeg/README.md) | 同梱 FFmpeg のバージョン、configure フラグ、LGPL 上の注意 |
 
 ## ライセンス

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Slot
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtCore import Qt, QThread, QUrl, Slot
+from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from pixelart_converter.conversion.service import ConversionService
 from pixelart_converter.errors import ConversionError, ErrorCode
+from pixelart_converter.licenses import resolve_third_party_licenses_dir
 from pixelart_converter.logging_config import get_logger
 from pixelart_converter.models import (
     AllFrames,
@@ -75,7 +76,42 @@ class MainWindow(QMainWindow):
         self._worker: ConversionWorker | None = None
 
         self._build_ui()
+        self._build_menu_bar()
         self._sync_option_widgets()
+
+    def _build_menu_bar(self) -> None:
+        help_menu = self.menuBar().addMenu(self.tr("Help"))
+        self.third_party_licenses_action = QAction(
+            self.tr("Third-party licenses"),
+            self,
+        )
+        self.third_party_licenses_action.setObjectName("thirdPartyLicensesAction")
+        self.third_party_licenses_action.triggered.connect(
+            self._on_show_third_party_licenses
+        )
+        help_menu.addAction(self.third_party_licenses_action)
+
+    def _on_show_third_party_licenses(self) -> None:
+        try:
+            licenses_dir = resolve_third_party_licenses_dir()
+        except FileNotFoundError:
+            QMessageBox.warning(
+                self,
+                self.tr("Third-party licenses"),
+                self.tr("License files are not available in this installation."),
+            )
+            return
+
+        opened = QDesktopServices.openUrl(QUrl.fromLocalFile(str(licenses_dir)))
+        if not opened:
+            QMessageBox.information(
+                self,
+                self.tr("Third-party licenses"),
+                self.tr(
+                    "License files are located at:\n{0}\n\n"
+                    "Open NOTICE.txt in that folder to read the notices."
+                ).format(licenses_dir),
+            )
 
     def _build_ui(self) -> None:
         central = QWidget(self)

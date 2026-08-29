@@ -1,0 +1,35 @@
+pixelart-converter — Third-Party Notices
+=========================================
+
+This application bundles or depends on the following open-source components.
+Full license texts are included in this folder unless noted otherwise.
+
+Component                          License              File
+---------------------------------------------------------------------------
+PySide6 / Qt (PySide6-Essentials)  GNU LGPL v3          LGPL-3.0.txt
+FFmpeg (bundled binary)            GNU LGPL v3          LGPL-3.0.txt, FFmpeg-README.txt
+Pillow (PIL)                       PIL License (MIT-CMU) Pillow-LICENSE.txt
+PyInstaller (build/runtime)        GPL v2+ w/ exception PyInstaller-COPYING.txt
+
+Qt and PySide6
+--------------
+The GUI uses PySide6-Essentials, which provides bindings to Qt libraries
+licensed under the GNU Lesser General Public License, version 3 (LGPL-3.0).
+See LGPL-3.0.txt for the full license text.
+
+FFmpeg
+------
+A statically or dynamically linked FFmpeg build is bundled for media
+conversion. FFmpeg is licensed under the GNU Lesser General Public License,
+version 3 or later (LGPL-3.0+). See LGPL-3.0.txt and FFmpeg-README.txt.
+
+Pillow
+------
+GIF preview and metadata use the Python Imaging Library (Pillow), licensed
+under the PIL License (historically known as MIT-CMU). See Pillow-LICENSE.txt.
+
+PyInstaller
+-----------
+Release builds are produced with PyInstaller, licensed under the GNU General
+Public License version 2 or later, with a Bootloader Exception that permits
+distribution of bundled applications. See PyInstaller-COPYING.txt.

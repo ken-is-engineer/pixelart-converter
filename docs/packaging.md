@@ -1,6 +1,6 @@
 # パッケージング
 
-macOS の署名なしローカル `.app` から書く。Windows の `.exe` 梱包は T5-2。
+macOS の署名なしローカル `.app` と Windows の onedir `.exe` フォルダ。onefile か onedir かの最終判断は T5-3。
 
 ## macOS（署名なし・ローカル起動）
 
@@ -45,3 +45,41 @@ xattr -dr com.apple.quarantine dist/pixelart-converter.app
 システム設定の「このまま開く」でも同様。署名・公証は T5-4（本フェーズ必須ではない）。
 
 変換には同梱 ffmpeg だけを使う。システム PATH の `ffmpeg` や Homebrew の GPL ビルドへは切り替えない。
+
+## Windows（onedir フォルダ）
+
+成果物は **onedir** の `dist/pixelart-converter/`（PyInstaller の `COLLECT`）。onefile にはしない。GUI は `python -m pixelart_converter` と同じ `src/pixelart_converter/__main__.py`。同梱 ffmpeg は `vendor/ffmpeg/windows/ffmpeg.exe` を `_MEIPASS/vendor/ffmpeg/windows/` へ入れる。Qt は **PySide6-Essentials**（フルの PySide6 メタパッケージは不要）。
+
+### この Mac では .exe を作れない
+
+T5-2 の成果は spec・ビルドスクリプト・本ドキュメントである。**変換が通る Windows バンドル自体は、この macOS チェックアウトでは作れない。** PyInstaller はターゲット OS 上でビルドする必要がある。Windows 実機または Windows CI で `scripts/build_windows.ps1` を走らせる。
+
+クリーンな Windows で Python なしに変換が通る、が完了条件だが、次が揃うまでブロックされている。
+
+1. `vendor/ffmpeg/windows/ffmpeg.exe` が未ビルド（MSYS2 MINGW64 で `scripts/build_ffmpeg_lgpl.sh --platform windows`。バイナリは git に入れない）
+2. 空きディスクが 5 GB 未満。PyInstaller / Qt の展開でディスクを埋め尽くすので、空きを確保するまで `pip install pyinstaller` も実行しない
+
+### ビルド（Windows 実機または CI で）
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e .
+pip install pyinstaller
+# MSYS2 MINGW64 で scripts/build_ffmpeg_lgpl.sh --platform windows
+scripts\build_windows.ps1            # dist\pixelart-converter\
+```
+
+`scripts/build_windows.ps1` は ffmpeg が無いとき、または空きが 5 GB 未満のとき、PyInstaller を起動せずに失敗する。閾値は `PIXELART_APP_MIN_FREE_MB`（既定 5120）。
+
+### 起動
+
+```powershell
+dist\pixelart-converter\pixelart-converter.exe
+```
+
+署名していないため SmartScreen が初回起動を止めることがある。**詳細情報 → 実行** で通す。コード署名は T5-4（本フェーズ必須ではない）。
+
+MINGW64 でビルドした ffmpeg が `libwinpthread-1.dll` 等に依存している場合、同じ `vendor/ffmpeg/windows/` ディレクトリへ DLL を置いてから PyInstaller を走らせる（`scripts/build_ffmpeg_lgpl_windows.md` 参照）。
+
+変換には同梱 ffmpeg だけを使う。システム PATH の `ffmpeg` や GPL 入りの配布ビルドへは切り替えない。

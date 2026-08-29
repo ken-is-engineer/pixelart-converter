@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# PyInstaller
+build/
+dist/
+*.spec.bak
+
+# Bundled binaries (large; tracked separately when added)
+# vendor/ffmpeg/ はライセンス文書と README のみコミットし、バイナリは後続で方針を決める
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Secrets / local
+.env
+.env.*
+*.pem

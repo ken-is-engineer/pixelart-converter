@@ -14,6 +14,8 @@ class FFmpegCommandBuilder:
 
         argv = [
             str(resolve_ffmpeg()),
+            "-nostdin",
+            "-y",
             "-i",
             str(job.input_path),
         ]

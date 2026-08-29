@@ -59,7 +59,7 @@ vendor/ffmpeg/
 - `--enable-gpl` しない
 - `--enable-libx264` しない
 - ハードウェアエンコーダー（VideoToolbox / Media Foundation）は有効にする
-- ソフトウェアフォールバックを入れる場合のみ `--enable-libopenh264` を検討する
+- OpenH264（`libopenh264`）は T2-4 時点で **非採用**。将来採用する場合のみ `--enable-libopenh264` を追加する
 
 公開されている “full” ビルド（gyan.dev の full 等）は GPL + x264 であることが多い。**そのまま同梱しない。**
 
@@ -79,15 +79,18 @@ vendor/ffmpeg/
 
 変換前（または起動時キャッシュ）に、同梱 `ffmpeg -hide_banner -encoders` 相当でエンコーダーの有無を確認し、必要なら短いテストエンコードで実動作を見る。
 
-**優先順**
+**優先順（T2-4 確定: HW のみ）**
 
 1. OS ネイティブ HW  
    - macOS: `h264_videotoolbox`  
    - Windows: `h264_mf`
-2. （採用した場合）`libopenh264`
-3. なし → MP4 ジョブを失敗。メッセージで HW 非対応であることと、GPL ビルドへは切り替えないことを示す
+2. なし → MP4 ジョブを失敗。メッセージで HW 非対応であることと、GPL ビルドやシステム PATH の `ffmpeg` へは切り替えないことを示す
 
-OpenH264 のプロファイル（Constrained Baseline か Main か）は Phase 2 で実機検証し、本設計の「採用 / 非採用」と UI 上の注意書きを確定する。検証前に main profile 前提で実装しない。
+**採用しないもの**
+
+- `libx264` — 同梱 FFmpeg に載っていてもログに残して無視する（GPL）
+- `libopenh264` — T2-4 で非採用。configure に含めず、プローブで見えても選択しない。プロファイル未検証のため将来タスクで再評価する
+- システム PATH の `ffmpeg` — §3.3 のとおりフォールバックしない
 
 ## 5. 変換パイプライン
 

@@ -6,18 +6,21 @@ import subprocess
 
 from pixelart_converter.conversion.binary import resolve_ffmpeg
 from pixelart_converter.conversion.command import FFmpegCommandBuilder
-from pixelart_converter.conversion.encoder import EncoderResult, resolve_encoder
+from pixelart_converter.conversion.encoder import (
+    ALLOWED_MP4_ENCODERS,
+    EncoderResult,
+    resolve_encoder,
+)
 from pixelart_converter.errors import ConversionError, ErrorCode
-from pixelart_converter.models import ConversionJob, OutputFormat
-
-_ALLOWED_MP4_ENCODERS = frozenset({"h264_videotoolbox", "h264_mf"})
+from pixelart_converter.models import ConversionJob, MP4Output, OutputFormat
 
 
 class ConversionService:
     """Validate that a job can run, then convert.
 
-    GIF conversion supports the common Phase 3 options. Format-specific
-    conversion pipelines remain unavailable until their respective tasks.
+    GIF conversion supports the common Phase 3 options. MP4 loop-count
+    jobs encode with the hardware encoder selected at preflight. Duration
+    MP4 and still-image pipelines remain unavailable until later tasks.
     """
 
     def preflight(self, job: ConversionJob) -> EncoderResult | None:
@@ -35,21 +38,26 @@ class ConversionService:
     def convert(self, job: ConversionJob) -> None:
         """Preflight, then encode.
 
-        GIF output uses the common command builder. Other formats still run
-        preflight so MP4 fails closed when no hardware encoder is available.
+        GIF output uses the common command builder. MP4 loop-count jobs
+        invoke the builder (hardware ``-c:v`` only) and a mockable
+        subprocess. Other formats still run preflight so MP4 fails closed
+        when no hardware encoder is available. Duration MP4 is T3-3.
         """
         if job.output_format is OutputFormat.GIF:
             argv = FFmpegCommandBuilder().build(job)
-            try:
-                subprocess.run(argv, check=True)
-            except subprocess.CalledProcessError as exc:
-                raise ConversionError.from_code(
-                    ErrorCode.UNKNOWN,
-                    detail=f"ffmpeg exited {exc.returncode}",
-                ) from exc
+            _run_ffmpeg(argv)
             return
 
         self.preflight(job)
+        if (
+            job.output_format is OutputFormat.MP4
+            and isinstance(job.output, MP4Output)
+            and job.output.options.loop_count is not None
+        ):
+            argv = FFmpegCommandBuilder().build(job)
+            _run_ffmpeg(argv)
+            return
+
         raise NotImplementedError(
             "This output format is not implemented yet; conversion was not started."
         )
@@ -59,7 +67,7 @@ class ConversionService:
         # listed but unavailable". Do not rewrite the user message.
         resolve_ffmpeg()
         encoder = resolve_encoder()
-        if encoder is None or encoder.name not in _ALLOWED_MP4_ENCODERS:
+        if encoder is None or encoder.name not in ALLOWED_MP4_ENCODERS:
             raise _mp4_encoder_unavailable(
                 detail=(
                     "bundled ffmpeg has no hardware H.264 encoder"
@@ -68,6 +76,16 @@ class ConversionService:
                 ),
             )
         return encoder
+
+
+def _run_ffmpeg(argv: list[str]) -> None:
+    try:
+        subprocess.run(argv, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise ConversionError.from_code(
+            ErrorCode.UNKNOWN,
+            detail=f"ffmpeg exited {exc.returncode}",
+        ) from exc
 
 
 def _mp4_encoder_unavailable(*, detail: str | None) -> ConversionError:

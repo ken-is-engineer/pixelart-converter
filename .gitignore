@@ -8,9 +8,13 @@ __pycache__/
 venv/
 env/
 *.egg-info/
+.eggs/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
+.tox/
 
 # PyInstaller
 build/

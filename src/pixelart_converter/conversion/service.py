@@ -63,6 +63,8 @@ class ConversionService:
         )
 
     def _preflight_mp4(self) -> EncoderResult:
+        # Missing bundled binary is a different failure from "HW encoder
+        # listed but unavailable". Do not rewrite the user message.
         resolve_ffmpeg()
         encoder = resolve_encoder()
         if encoder is None or encoder.name not in ALLOWED_MP4_ENCODERS:

@@ -229,6 +229,29 @@ class ConversionServiceMp4Test(unittest.TestCase):
     )
     @patch(
         "pixelart_converter.conversion.service.resolve_encoder",
+        return_value=EncoderResult(name="libx264"),
+    )
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_mp4_rejects_gpl_encoder_even_if_resolver_returns_it(
+        self, run, popen, _resolve_encoder, _resolve_ffmpeg
+    ) -> None:
+        with self.assertRaises(ConversionError) as ctx:
+            self.service.convert(_mp4_job())
+
+        error = ctx.exception
+        self.assertEqual(error.code, ErrorCode.ENCODER_UNAVAILABLE)
+        self.assertEqual(error.message, user_message_for(ErrorCode.ENCODER_UNAVAILABLE))
+        self.assertIn("libx264", error.detail or "")
+        run.assert_not_called()
+        popen.assert_not_called()
+
+    @patch(
+        "pixelart_converter.conversion.service.resolve_ffmpeg",
+        return_value=Path("/bundled/ffmpeg"),
+    )
+    @patch(
+        "pixelart_converter.conversion.service.resolve_encoder",
         return_value=EncoderResult(name="h264_videotoolbox"),
     )
     @patch("subprocess.Popen")

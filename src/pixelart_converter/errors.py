@@ -41,13 +41,16 @@ def user_message_for(code: ErrorCode) -> str:
     return _DEFAULT_USER_MESSAGES[code]
 
 
-@dataclass(frozen=True, slots=True)
-class ConversionError:
+@dataclass(frozen=True)
+class ConversionError(Exception):
     """Structured error: category, user message, and optional log-only detail."""
 
     code: ErrorCode
     message: str
     detail: str | None = None
+
+    def __str__(self) -> str:
+        return self.message
 
     @classmethod
     def from_code(

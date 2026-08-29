@@ -66,12 +66,14 @@ class EncoderResolver:
             logger.warning(
                 "Bundled FFmpeg advertises libx264; ignoring the GPL encoder"
             )
+        if "libopenh264" in encoders:
+            logger.warning(
+                "Bundled FFmpeg advertises libopenh264; not adopted in current builds"
+            )
 
         native = _NATIVE_ENCODERS.get(platform.system())
         if native is not None and native in encoders:
             return EncoderResult(name=native)
-        if "libopenh264" in encoders:
-            return EncoderResult(name="libopenh264")
         return None
 
 

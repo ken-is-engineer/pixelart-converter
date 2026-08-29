@@ -125,16 +125,21 @@ class EncoderResolverTest(unittest.TestCase):
     )
     @patch("pixelart_converter.conversion.encoder.subprocess.run")
     @patch("pixelart_converter.conversion.encoder.platform.system")
-    def test_openh264_is_fallback(
+    def test_libopenh264_is_logged_but_not_selected(
         self, system, run, _resolve_ffmpeg
     ) -> None:
         system.return_value = "Darwin"
         run.return_value = _probe_result("libopenh264")
 
-        result = EncoderResolver().resolve()
+        with self.assertLogs(
+            "pixelart_converter.conversion.encoder", level="WARNING"
+        ) as logs:
+            result = EncoderResolver().resolve()
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result.name, "libopenh264")
+        self.assertIsNone(result)
+        self.assertTrue(
+            any("libopenh264" in message for message in logs.output)
+        )
 
 
 if __name__ == "__main__":

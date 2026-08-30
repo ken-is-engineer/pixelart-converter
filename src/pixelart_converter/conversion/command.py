@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 
 from pixelart_converter.conversion.binary import resolve_ffmpeg
-from pixelart_converter.conversion.encoder import EncoderResolver
+from pixelart_converter.conversion.encoder import ALLOWED_MP4_ENCODERS, EncoderResolver
 from pixelart_converter.errors import ConversionError, ErrorCode
 from pixelart_converter.models import (
     ConversionJob,
@@ -33,7 +34,7 @@ class FFmpegCommandBuilder:
         palette instead of a naive 256-color quantize.
         """
 
-        argv = [str(resolve_ffmpeg())]
+        argv = [str(resolve_ffmpeg()), "-nostdin", "-y"]
         argv.extend(self._input_args(job))
 
         if job.output_format is OutputFormat.GIF:
@@ -100,7 +101,7 @@ class FFmpegCommandBuilder:
             chain.append(scale)
         chain.append("split[s0][s1]")
         graph = (
-            f"[0:v]{','.join(chain)};[s0]palettegen[p];"
+            f"[0:v]{','.join(chain)};[s0]palettegen=reserve_transparent=1[p];"
             f"[s1][p]paletteuse=dither=none"
         )
         return ["-filter_complex", graph]
@@ -119,7 +120,11 @@ class FFmpegCommandBuilder:
         if options.duration_seconds is not None:
             return ["-stream_loop", "-1"]
         loop_count = options.loop_count
-        assert loop_count is not None
+        if loop_count is None:
+            raise ConversionError.from_code(
+                ErrorCode.UNKNOWN,
+                detail="MP4 job is missing loop_count after duration check",
+            )
         extra_repeats = loop_count - 1
         return ["-stream_loop", str(extra_repeats)]
 
@@ -128,17 +133,20 @@ class FFmpegCommandBuilder:
             return ["-vsync", "0"]
         if isinstance(job.output, (JPEGOutput, PNGOutput)):
             if isinstance(job.output.frames, SingleFrame):
-                return ["-frames:v", "1"]
+                return ["-vsync", "0", "-frames:v", "1"]
             return ["-vsync", "0", "-start_number", "0"]
         if job.output_format is not OutputFormat.MP4:
             return []
         options = _mp4_options(job)
         encoder = EncoderResolver().resolve()
-        if encoder is None:
-            # Service fail-closes first; builder never falls back to libx264.
+        if encoder is None or encoder.name not in ALLOWED_MP4_ENCODERS:
             raise ConversionError.from_code(
                 ErrorCode.ENCODER_UNAVAILABLE,
-                detail="bundled ffmpeg has no hardware H.264 encoder",
+                detail=(
+                    "bundled ffmpeg has no hardware H.264 encoder"
+                    if encoder is None
+                    else f"refusing encoder {encoder.name!r}"
+                ),
             )
         argv = [
             "-c:v",
@@ -169,7 +177,13 @@ def _mp4_options(job: ConversionJob) -> MP4Options:
 
 
 def _format_duration(seconds: float) -> str:
-    """Render seconds for FFmpeg ``-t`` without scientific notation."""
+    """Render seconds for FFmpeg ``-t`` without scientific notation.
 
-    text = format(seconds, "g")
-    return text if text else str(seconds)
+    ``format(x, "g")`` switches to ``1e-05`` below 1e-4, which FFmpeg's
+    option parser does not accept as a time.
+    """
+
+    text = format(Decimal.from_float(seconds), "f")
+    if "e" in text.lower():
+        raise ValueError(f"duration must not use scientific notation: {text!r}")
+    return text

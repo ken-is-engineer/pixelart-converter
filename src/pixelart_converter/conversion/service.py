@@ -16,7 +16,11 @@ from PIL import Image
 
 from pixelart_converter.conversion.binary import resolve_ffmpeg
 from pixelart_converter.conversion.command import FFmpegCommandBuilder
-from pixelart_converter.conversion.encoder import EncoderResult, resolve_encoder
+from pixelart_converter.conversion.encoder import (
+    ALLOWED_MP4_ENCODERS,
+    EncoderResult,
+    resolve_encoder,
+)
 from pixelart_converter.errors import ConversionError, ErrorCode
 from pixelart_converter.models import (
     ConversionJob,
@@ -70,6 +74,7 @@ class ConversionService:
         resolving or starting FFmpeg. Progress callbacks receive elapsed
         output seconds reported by FFmpeg.
         """
+        self._cancelled.clear()
         if job.output_format is OutputFormat.GIF:
             argv = FFmpegCommandBuilder().build(job)
         elif isinstance(job.output, (JPEGOutput, PNGOutput)):
@@ -84,6 +89,8 @@ class ConversionService:
                 "This output format is not implemented yet; conversion was not started."
             )
 
+        if self._cancelled.is_set():
+            raise ConversionError.from_code(ErrorCode.CANCELLED)
         self._encode(argv, job.resolved_output_path(), progress_callback)
 
     def cancel(self) -> None:
@@ -106,7 +113,6 @@ class ConversionService:
         output_path: Path,
         progress_callback: ProgressCallback | None,
     ) -> None:
-        self._cancelled.clear()
         output_path = output_path.resolve()
         output_dir = output_path.parent
         try:
@@ -137,6 +143,8 @@ class ConversionService:
         last_progress: float | None = None
 
         try:
+            if self._cancelled.is_set():
+                raise ConversionError.from_code(ErrorCode.CANCELLED)
             process = subprocess.Popen(
                 encode_argv,
                 stdout=subprocess.PIPE,
@@ -213,7 +221,7 @@ class ConversionService:
         final_ffmpeg_path: Path,
         output_dir: Path,
     ) -> None:
-        generated = list(temp_dir.iterdir())
+        generated = [path for path in temp_dir.iterdir() if path.is_file()]
         if not generated:
             raise ConversionError.from_code(
                 ErrorCode.UNKNOWN,
@@ -221,7 +229,14 @@ class ConversionService:
             )
 
         if "%" not in final_ffmpeg_path.name:
-            os.replace(generated[0], output_dir / final_ffmpeg_path.name)
+            named = temp_dir / final_ffmpeg_path.name
+            source = named if named.is_file() else generated[0]
+            if source is generated[0] and len(generated) != 1:
+                raise ConversionError.from_code(
+                    ErrorCode.UNKNOWN,
+                    detail="ffmpeg wrote multiple files for a single-file output",
+                )
+            os.replace(source, output_dir / final_ffmpeg_path.name)
             return
 
         for temp_output in generated:
@@ -229,7 +244,8 @@ class ConversionService:
 
     def _validate_still_frames(self, job: ConversionJob) -> None:
         output = job.output
-        assert isinstance(output, (JPEGOutput, PNGOutput))
+        if not isinstance(output, (JPEGOutput, PNGOutput)):
+            raise TypeError("still-frame validation requires JPEG or PNG output")
 
         try:
             with Image.open(job.input_path) as image:
@@ -259,16 +275,17 @@ class ConversionService:
             )
 
     def _preflight_mp4(self) -> EncoderResult:
-        try:
-            resolve_ffmpeg()
-        except ConversionError as exc:
-            if exc.code is ErrorCode.ENCODER_UNAVAILABLE:
-                raise _mp4_encoder_unavailable(detail=exc.detail) from exc
-            raise
+        # Missing bundled binary is a different failure from "HW encoder
+        # listed but unavailable". Do not rewrite the user message.
+        resolve_ffmpeg()
         encoder = resolve_encoder()
-        if encoder is None:
+        if encoder is None or encoder.name not in ALLOWED_MP4_ENCODERS:
             raise _mp4_encoder_unavailable(
-                detail="bundled ffmpeg has no hardware H.264 encoder",
+                detail=(
+                    "bundled ffmpeg has no hardware H.264 encoder"
+                    if encoder is None
+                    else f"refusing encoder {encoder.name!r}"
+                ),
             )
         return encoder
 

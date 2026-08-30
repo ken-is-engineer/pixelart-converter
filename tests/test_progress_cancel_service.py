@@ -84,6 +84,61 @@ class ConversionServiceProgressCancelTest(unittest.TestCase):
         self.assertFalse(output_path.exists())
         self.assertEqual(list(self.output_dir.iterdir()), [])
 
+    def test_cancel_during_preflight_does_not_start_ffmpeg(self) -> None:
+        from pixelart_converter.models import JPEGOutput, SingleFrame
+
+        output_path = self.output_dir / "never.jpg"
+        job = ConversionJob(
+            "input.gif",
+            JPEGOutput(frames=SingleFrame(0), output_path=output_path),
+        )
+        service = ConversionService()
+
+        def cancel_then_return(_job) -> None:
+            service.cancel()
+
+        with (
+            patch.object(
+                service, "_validate_still_frames", side_effect=cancel_then_return
+            ),
+            patch(
+                "pixelart_converter.conversion.service.resolve_ffmpeg",
+                return_value=Path("/bundled/ffmpeg"),
+            ),
+            patch(
+                "pixelart_converter.conversion.command.resolve_ffmpeg",
+                return_value=Path("/bundled/ffmpeg"),
+            ),
+            patch("pixelart_converter.conversion.service.subprocess.Popen") as popen,
+        ):
+            with self.assertRaises(ConversionError) as ctx:
+                service.convert(job)
+
+        self.assertEqual(ctx.exception.code, ErrorCode.CANCELLED)
+        popen.assert_not_called()
+        self.assertFalse(output_path.exists())
+
+    def test_publish_uses_intended_name_when_temp_dir_has_extra_files(
+        self,
+    ) -> None:
+        output_path = self.output_dir / "converted.gif"
+        job = ConversionJob("input.gif", GIFOutput(output_path))
+        extra_dir = Path(tempfile.mkdtemp(dir=self.output_dir))
+        (extra_dir / "leftover.bin").write_bytes(b"nope")
+
+        with patch(
+            "pixelart_converter.conversion.command.resolve_ffmpeg",
+            return_value=self._fake_ffmpeg(pause=False),
+        ), patch(
+            "pixelart_converter.conversion.service.tempfile.mkdtemp",
+            return_value=str(extra_dir),
+        ):
+            ConversionService().convert(job)
+
+        self.assertEqual(output_path.read_bytes(), b"encoded")
+        self.assertFalse((self.output_dir / "leftover.bin").exists())
+        self.assertEqual(list(self.output_dir.iterdir()), [output_path])
+
 
 if __name__ == "__main__":
     unittest.main()

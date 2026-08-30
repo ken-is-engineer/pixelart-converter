@@ -16,7 +16,9 @@ from pixelart_converter.conversion.encoder import (
 from pixelart_converter.errors import ConversionError, ErrorCode
 from pixelart_converter.models import (
     ConversionJob,
+    FrameRange,
     JPEGOutput,
+    MultipleFrames,
     OutputFormat,
     PNGOutput,
     SingleFrame,
@@ -28,7 +30,7 @@ class ConversionService:
 
     GIF conversion supports the common Phase 3 options. MP4 loop-count
     and duration jobs encode with the hardware encoder selected at
-    preflight. JPEG and PNG support one validated, zero-based frame.
+    preflight. JPEG and PNG frame selections are validated before FFmpeg.
     """
 
     def preflight(self, job: ConversionJob) -> EncoderResult | None:
@@ -48,8 +50,8 @@ class ConversionService:
 
         GIF output uses the common command builder. MP4 jobs invoke the
         builder (hardware ``-c:v`` only) and a mockable subprocess.
-        Single-frame JPEG/PNG jobs validate the GIF and requested index
-        before resolving or starting FFmpeg.
+        JPEG/PNG jobs validate the GIF and every requested index before
+        resolving or starting FFmpeg.
         """
         if job.output_format is OutputFormat.GIF:
             argv = FFmpegCommandBuilder().build(job)
@@ -57,11 +59,7 @@ class ConversionService:
             return
 
         if isinstance(job.output, (JPEGOutput, PNGOutput)):
-            if not isinstance(job.output.frames, SingleFrame):
-                raise NotImplementedError(
-                    "Multi-frame still-image output is not implemented yet."
-                )
-            self._validate_single_frame(job)
+            self._validate_still_frames(job)
             self.preflight(job)
             argv = FFmpegCommandBuilder().build(job)
             _run_ffmpeg(argv)
@@ -77,13 +75,10 @@ class ConversionService:
             "This output format is not implemented yet; conversion was not started."
         )
 
-    def _validate_single_frame(self, job: ConversionJob) -> None:
+    def _validate_still_frames(self, job: ConversionJob) -> None:
         output = job.output
         if not isinstance(output, (JPEGOutput, PNGOutput)):
-            raise TypeError("single-frame validation requires JPEG or PNG output")
-        frames = output.frames
-        if not isinstance(frames, SingleFrame):
-            raise TypeError("single-frame validation requires SingleFrame")
+            raise TypeError("still-frame validation requires JPEG or PNG output")
 
         try:
             with Image.open(job.input_path) as image:
@@ -99,14 +94,17 @@ class ConversionService:
                 detail=f"could not read GIF frame count: {exc}",
             ) from exc
 
-        if frames.index >= frame_count:
+        invalid_index = _first_out_of_range_index(output.frames, frame_count)
+        if invalid_index is not None:
             raise ConversionError.from_code(
                 ErrorCode.INVALID_INPUT,
                 message=(
-                    f"Frame index {frames.index} is out of range for a GIF "
+                    f"Frame index {invalid_index} is out of range for a GIF "
                     f"with {frame_count} frame(s)."
                 ),
-                detail=f"requested frame {frames.index}; frame count is {frame_count}",
+                detail=(
+                    f"requested frame {invalid_index}; frame count is {frame_count}"
+                ),
             )
 
     def _preflight_mp4(self) -> EncoderResult:
@@ -141,3 +139,18 @@ def _mp4_encoder_unavailable(*, detail: str | None) -> ConversionError:
         ErrorCode.ENCODER_UNAVAILABLE,
         detail=detail,
     )
+
+
+def _first_out_of_range_index(
+    frames: object, frame_count: int
+) -> int | None:
+    if isinstance(frames, SingleFrame):
+        return frames.index if frames.index >= frame_count else None
+    if isinstance(frames, MultipleFrames):
+        for item in frames.items:
+            if isinstance(item, FrameRange):
+                if item.end >= frame_count:
+                    return max(item.start, frame_count)
+            elif item >= frame_count:
+                return item
+    return None

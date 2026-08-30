@@ -9,7 +9,7 @@
 | プラットフォーム | 状態 | ユーザー影響 |
 |------------------|------|--------------|
 | macOS | 署名なし `.app` | 同一 Mac のローカルビルドは多くの場合そのまま起動。他 Mac へ配布すると Gatekeeper が止めることがある（[packaging.md](packaging.md) の「署名なしで開く」参照） |
-| Windows | 署名なし onedir `.exe` | SmartScreen が初回起動を止すことがある（[packaging.md](packaging.md) の Windows 節参照） |
+| Windows | 署名なし onedir `.exe` | SmartScreen が初回起動を止めることがある（[packaging.md](packaging.md) の Windows 節参照） |
 
 開発・手動テスト・社内配布は上記のままで問題ない。公開配布（ダウンロードページ、GitHub Releases 等）を始める前に、後述の署名・公証を実装する。
 

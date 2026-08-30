@@ -14,6 +14,7 @@ from pixelart_converter.models import (
     JPEGOutput,
     MultipleFrames,
     PNGOutput,
+    SingleFrame,
 )
 
 
@@ -39,6 +40,8 @@ class FFmpegCommandBuilderMultiFrameTest(unittest.TestCase):
             argv,
             [
                 "/bundled/ffmpeg",
+                "-nostdin",
+                "-y",
                 "-i",
                 "input.gif",
                 "-vsync",
@@ -85,6 +88,19 @@ class FFmpegCommandBuilderMultiFrameTest(unittest.TestCase):
         )
         self.assertEqual(argv[-1], "out_%03d.png")
         self.assertNotIn("-frames:v", argv)
+        self.assertEqual(argv[1:3], ["-nostdin", "-y"])
+        self.assertFalse(any(arg.endswith(".png") and "%03d" not in arg for arg in argv[1:]))
+
+    def test_single_frame_is_not_rewritten_as_a_sequence(self) -> None:
+        argv = self.builder.build(
+            ConversionJob(
+                input_path="input.gif",
+                output=PNGOutput(frames=SingleFrame(0), output_path="frame.png"),
+            )
+        )
+        self.assertEqual(argv[-1], "frame.png")
+        self.assertNotIn("%03d", argv[-1])
+        self.assertNotIn("-start_number", argv)
 
 
 if __name__ == "__main__":

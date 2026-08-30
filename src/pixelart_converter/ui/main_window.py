@@ -88,6 +88,7 @@ class MainWindow(QMainWindow):
         body.addWidget(self._options_panel, stretch=2)
         root.addLayout(body, stretch=1)
         root.addWidget(self._build_actions_bar())
+        self._connect_option_signals()
 
         self._error_label = QLabel("", central)
         self._error_label.setWordWrap(True)
@@ -149,7 +150,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.frame_group)
         layout.addWidget(self._build_common_group())
         layout.addStretch()
-        self._connect_option_signals()
         return box
 
     def _connect_option_signals(self) -> None:
@@ -327,6 +327,12 @@ class MainWindow(QMainWindow):
         row.addWidget(self.cancel_button)
         outer.addLayout(row)
 
+        self._output_sequence_hint = QLabel("", bar)
+        self._output_sequence_hint.setObjectName("outputSequenceHint")
+        self._output_sequence_hint.setWordWrap(True)
+        self._output_sequence_hint.hide()
+        outer.addWidget(self._output_sequence_hint)
+
         progress_row = QHBoxLayout()
         self.progress_bar = QProgressBar()
         self.progress_bar.setObjectName("progressBar")
@@ -352,6 +358,7 @@ class MainWindow(QMainWindow):
             self._sync_mp4_fields()
         if is_image:
             self._sync_frame_fields()
+        self._sync_output_sequence_hint()
 
     def _sync_mp4_fields(self) -> None:
         use_loop = self.mp4_loop_radio.isChecked()
@@ -361,6 +368,26 @@ class MainWindow(QMainWindow):
     def _sync_frame_fields(self) -> None:
         self.frame_index_spin.setEnabled(self.frame_single_radio.isChecked())
         self.frame_list_edit.setEnabled(self.frame_list_radio.isChecked())
+        self._sync_output_sequence_hint()
+
+    def _sync_output_sequence_hint(self) -> None:
+        fmt = self.current_output_format()
+        if fmt not in (OutputFormat.JPEG, OutputFormat.PNG):
+            self._output_sequence_hint.hide()
+            return
+        if not (
+            self.frame_list_radio.isChecked() or self.frame_all_radio.isChecked()
+        ):
+            self._output_sequence_hint.hide()
+            return
+        ext = "png" if fmt is OutputFormat.PNG else "jpg"
+        self._output_sequence_hint.setText(
+            self.tr(
+                "Multiple frames are saved as a numbered sequence "
+                "(e.g. name_000.{0}), not a single file."
+            ).format(ext)
+        )
+        self._output_sequence_hint.show()
 
     def current_output_format(self) -> OutputFormat:
         """Return the format currently selected in the form."""

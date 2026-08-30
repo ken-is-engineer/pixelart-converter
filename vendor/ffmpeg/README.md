@@ -86,7 +86,7 @@ source_url=https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz
 | `--enable-videotoolbox` / `--enable-mediafoundation` | OS ベンダーの HW H.264 エンコーダー。GPL と特許を OS 側に委ねる（requirements §5.3） |
 | `--enable-encoder=h264_videotoolbox` / `h264_mf` | エンコーダーが取れない環境で configure を失敗させ、静かに欠けたバイナリが出来るのを防ぐ |
 
-`--enable-libx264` と `--enable-gpl` は**書かない**。`libopenh264`（ソフトウェアフォールバック候補）は T2-4 の実機検証待ちのため、まだ入れない。採用する場合は `--enable-libopenh264` を `[common]` に足す（BSD 系ライセンスなので LGPL のままでいられる）。
+`--enable-libx264` と `--enable-gpl` は**書かない**。`libopenh264` は T2-4 で **非採用**（プロファイル未検証、configure に含めない）。プローブで見えても EncoderResolver は選択しない。将来採用する場合のみ `--enable-libopenh264` を `[common]` に足す（BSD 系ライセンスなので LGPL のままでいられる）。
 
 ## ビルド手順
 

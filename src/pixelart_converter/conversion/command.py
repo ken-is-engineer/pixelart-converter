@@ -93,7 +93,7 @@ class FFmpegCommandBuilder:
         if isinstance(job.output, (JPEGOutput, PNGOutput)) and isinstance(
             job.output.frames, SingleFrame
         ):
-            return ["-frames:v", "1"]
+            return ["-vsync", "0", "-frames:v", "1"]
         if job.output_format is not OutputFormat.MP4:
             return []
         options = _mp4_options(job)

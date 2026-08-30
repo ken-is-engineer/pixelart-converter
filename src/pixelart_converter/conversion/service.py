@@ -64,7 +64,7 @@ class ConversionService:
             self._validate_single_frame(job)
             self.preflight(job)
             argv = FFmpegCommandBuilder().build(job)
-            subprocess.run(argv, check=True)
+            _run_ffmpeg(argv)
             return
 
         self.preflight(job)
@@ -79,9 +79,11 @@ class ConversionService:
 
     def _validate_single_frame(self, job: ConversionJob) -> None:
         output = job.output
-        assert isinstance(output, (JPEGOutput, PNGOutput))
+        if not isinstance(output, (JPEGOutput, PNGOutput)):
+            raise TypeError("single-frame validation requires JPEG or PNG output")
         frames = output.frames
-        assert isinstance(frames, SingleFrame)
+        if not isinstance(frames, SingleFrame):
+            raise TypeError("single-frame validation requires SingleFrame")
 
         try:
             with Image.open(job.input_path) as image:

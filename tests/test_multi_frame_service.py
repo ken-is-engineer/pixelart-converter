@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from PIL import Image
 
@@ -94,9 +95,9 @@ class ConversionServiceMultiFrameTest(unittest.TestCase):
         "pixelart_converter.conversion.service.resolve_ffmpeg",
         return_value=Path("/bundled/ffmpeg"),
     )
-    @patch("pixelart_converter.conversion.service.subprocess.run")
+    @patch("pixelart_converter.conversion.service.subprocess.Popen")
     def test_inclusive_last_index_starts_ffmpeg(
-        self, run, service_ffmpeg, command_ffmpeg
+        self, popen, service_ffmpeg, command_ffmpeg
     ) -> None:
         output_path = Path(self.temp_dir.name) / "ok.png"
         job = ConversionJob(
@@ -106,15 +107,27 @@ class ConversionServiceMultiFrameTest(unittest.TestCase):
                 output_path=output_path,
             ),
         )
+        process = Mock()
+        process.stdout = io.StringIO("")
+        process.stderr = io.StringIO("")
+        process.wait.return_value = 0
+        process.poll.return_value = 0
+
+        def create_output(argv, **_kwargs):
+            dest = Path(argv[-1])
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            (dest.parent / "ok_000.png").write_bytes(b"png")
+            return process
+
+        popen.side_effect = create_output
 
         ConversionService().convert(job)
 
         service_ffmpeg.assert_called_once_with()
         command_ffmpeg.assert_called_once_with()
-        run.assert_called_once()
-        argv = run.call_args.args[0]
+        argv = popen.call_args.args[0]
         self.assertIn("select='between(n,0,2)'", argv)
-        self.assertTrue(argv[-1].endswith("ok_%03d.png"))
+        self.assertTrue(Path(argv[-1]).name.endswith("ok_%03d.png"))
 
 
 if __name__ == "__main__":

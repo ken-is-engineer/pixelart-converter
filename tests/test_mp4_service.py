@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from pixelart_converter.conversion.encoder import EncoderResult
 from pixelart_converter.conversion.service import ConversionService
@@ -52,21 +53,32 @@ class ConversionServiceMp4LoopTest(unittest.TestCase):
         "pixelart_converter.conversion.service.resolve_encoder",
         return_value=EncoderResult(name="h264_videotoolbox"),
     )
-    @patch("pixelart_converter.conversion.service.subprocess.run")
     def test_convert_runs_loop_count_argv(
-        self, run, _resolve_encoder, encoder_cls, command_ffmpeg, _service_ffmpeg
+        self, _resolve_encoder, encoder_cls, command_ffmpeg, _service_ffmpeg
     ) -> None:
         encoder_cls.return_value.resolve.return_value = EncoderResult(
             name="h264_videotoolbox"
         )
+        process = Mock()
+        process.stdout = io.StringIO("")
+        process.stderr = io.StringIO("")
+        process.wait.return_value = 0
+        process.poll.return_value = 0
 
-        ConversionService().convert(_loop_job(loop_count=3))
+        def create_output(argv, **_kwargs):
+            Path(argv[-1]).write_bytes(b"mp4")
+            return process
+
+        with patch(
+            "pixelart_converter.conversion.service.subprocess.Popen",
+            side_effect=create_output,
+        ) as popen, patch("pixelart_converter.conversion.service.os.replace"):
+            ConversionService().convert(_loop_job(loop_count=3))
 
         command_ffmpeg.assert_called_once_with()
-        argv = run.call_args.args[0]
-        self.assertEqual(run.call_args.kwargs, {"check": True})
+        argv = popen.call_args.args[0]
         self.assertEqual(
-            argv,
+            argv[:-4],
             [
                 "/bundled/ffmpeg",
                 "-nostdin",
@@ -84,9 +96,10 @@ class ConversionServiceMp4LoopTest(unittest.TestCase):
                 "-an",
                 "-movflags",
                 "+faststart",
-                "out.mp4",
             ],
         )
+        self.assertEqual(argv[-4:-1], ["-progress", "pipe:1", "-nostats"])
+        self.assertEqual(Path(argv[-1]).name, "out.mp4")
         self.assertNotIn("libx264", argv)
         self.assertNotIn("-t", argv)
         self.assertNotEqual(argv[0], "ffmpeg")
@@ -104,21 +117,32 @@ class ConversionServiceMp4LoopTest(unittest.TestCase):
         "pixelart_converter.conversion.service.resolve_encoder",
         return_value=EncoderResult(name="h264_videotoolbox"),
     )
-    @patch("pixelart_converter.conversion.service.subprocess.run")
     def test_convert_runs_duration_argv(
-        self, run, _resolve_encoder, encoder_cls, command_ffmpeg, _service_ffmpeg
+        self, _resolve_encoder, encoder_cls, command_ffmpeg, _service_ffmpeg
     ) -> None:
         encoder_cls.return_value.resolve.return_value = EncoderResult(
             name="h264_videotoolbox"
         )
+        process = Mock()
+        process.stdout = io.StringIO("")
+        process.stderr = io.StringIO("")
+        process.wait.return_value = 0
+        process.poll.return_value = 0
 
-        ConversionService().convert(_duration_job(duration_seconds=2.5))
+        def create_output(argv, **_kwargs):
+            Path(argv[-1]).write_bytes(b"mp4")
+            return process
+
+        with patch(
+            "pixelart_converter.conversion.service.subprocess.Popen",
+            side_effect=create_output,
+        ) as popen, patch("pixelart_converter.conversion.service.os.replace"):
+            ConversionService().convert(_duration_job(duration_seconds=2.5))
 
         command_ffmpeg.assert_called_once_with()
-        argv = run.call_args.args[0]
-        self.assertEqual(run.call_args.kwargs, {"check": True})
+        argv = popen.call_args.args[0]
         self.assertEqual(
-            argv,
+            argv[:-4],
             [
                 "/bundled/ffmpeg",
                 "-nostdin",
@@ -138,9 +162,10 @@ class ConversionServiceMp4LoopTest(unittest.TestCase):
                 "+faststart",
                 "-t",
                 "2.5",
-                "out.mp4",
             ],
         )
+        self.assertEqual(argv[-4:-1], ["-progress", "pipe:1", "-nostats"])
+        self.assertEqual(Path(argv[-1]).name, "out.mp4")
         self.assertNotIn("libx264", argv)
         self.assertNotEqual(argv[0], "ffmpeg")
 

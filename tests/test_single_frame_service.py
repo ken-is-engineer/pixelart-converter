@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from PIL import Image
 
@@ -42,25 +43,37 @@ class ConversionServiceSingleFrameTest(unittest.TestCase):
         "pixelart_converter.conversion.service.resolve_ffmpeg",
         return_value=Path("/bundled/ffmpeg"),
     )
-    @patch("pixelart_converter.conversion.service.subprocess.run")
+    @patch("pixelart_converter.conversion.service.subprocess.Popen")
     def test_valid_index_runs_single_output(
-        self, run, service_ffmpeg, command_ffmpeg
+        self, popen, service_ffmpeg, command_ffmpeg
     ) -> None:
         output_path = Path(self.temp_dir.name) / "frame.jpg"
         job = ConversionJob(
             input_path=self.input_path,
             output=JPEGOutput(frames=SingleFrame(1), output_path=output_path),
         )
+        process = Mock()
+        process.stdout = io.StringIO("")
+        process.stderr = io.StringIO("")
+        process.wait.return_value = 0
+        process.poll.return_value = 0
+
+        def create_output(argv, **_kwargs):
+            Path(argv[-1]).write_bytes(b"jpeg")
+            return process
+
+        popen.side_effect = create_output
 
         ConversionService().convert(job)
 
         service_ffmpeg.assert_called_once_with()
         command_ffmpeg.assert_called_once_with()
-        argv = run.call_args.args[0]
+        argv = popen.call_args.args[0]
         self.assertIn("select='eq(n,1)'", argv)
         self.assertEqual(argv[argv.index("-vsync") + 1], "0")
-        self.assertEqual(argv[-1], str(output_path))
-        run.assert_called_once_with(argv, check=True)
+        self.assertEqual(argv[-4:-1], ["-progress", "pipe:1", "-nostats"])
+        self.assertEqual(Path(argv[-1]).name, output_path.name)
+        self.assertEqual(output_path.read_bytes(), b"jpeg")
 
     @patch("pixelart_converter.conversion.command.resolve_ffmpeg")
     @patch("pixelart_converter.conversion.service.resolve_ffmpeg")

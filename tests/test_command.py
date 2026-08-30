@@ -104,7 +104,13 @@ class FFmpegCommandBuilderTest(unittest.TestCase):
 
         self.resolve_ffmpeg.assert_called_once_with()
         self.assertEqual(argv[0], "/bundled/ffmpeg")
+        self.assertEqual(argv[1:3], ["-nostdin", "-y"])
         self.assertNotEqual(argv[0], "ffmpeg")
+
+    def test_noninteractive_flags_come_before_input(self) -> None:
+        argv = self.builder.build(_job())
+        self.assertLess(argv.index("-nostdin"), argv.index("-i"))
+        self.assertLess(argv.index("-y"), argv.index("-i"))
 
 
 class FFmpegCommandBuilderGifPaletteTest(unittest.TestCase):
@@ -121,8 +127,8 @@ class FFmpegCommandBuilderGifPaletteTest(unittest.TestCase):
         argv = self.builder.build(_job())
 
         graph = _filter_complex(argv)
-        self.assertIn("palettegen", graph)
-        self.assertIn("paletteuse", graph)
+        self.assertIn("palettegen=reserve_transparent=1", graph)
+        self.assertIn("paletteuse=dither=none", graph)
         self.assertIn("split", graph)
         self.assertNotIn("-vf", argv)
 

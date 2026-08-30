@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from pixelart_converter.conversion.service import ConversionService
+from pixelart_converter.errors import ConversionError, ErrorCode
 from pixelart_converter.models import CommonOptions, ConversionJob, GIFOutput
 
 
@@ -29,6 +31,8 @@ class ConversionServiceGifTest(unittest.TestCase):
         run.assert_called_once_with(
             [
                 "/bundled/ffmpeg",
+                "-nostdin",
+                "-y",
                 "-i",
                 "in.gif",
                 "-filter_complex",
@@ -42,6 +46,20 @@ class ConversionServiceGifTest(unittest.TestCase):
             ],
             check=True,
         )
+
+    @patch(
+        "pixelart_converter.conversion.command.resolve_ffmpeg",
+        return_value=Path("/bundled/ffmpeg"),
+    )
+    @patch(
+        "pixelart_converter.conversion.service.subprocess.run",
+        side_effect=subprocess.CalledProcessError(1, ["ffmpeg"]),
+    )
+    def test_ffmpeg_failure_is_classified(self, _run, _resolve_ffmpeg) -> None:
+        job = ConversionJob(input_path="in.gif", output=GIFOutput("out.gif"))
+        with self.assertRaises(ConversionError) as ctx:
+            ConversionService().convert(job)
+        self.assertEqual(ctx.exception.code, ErrorCode.UNKNOWN)
 
 
 if __name__ == "__main__":

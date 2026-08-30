@@ -8,7 +8,11 @@ from PIL import Image
 
 from pixelart_converter.conversion.binary import resolve_ffmpeg
 from pixelart_converter.conversion.command import FFmpegCommandBuilder
-from pixelart_converter.conversion.encoder import EncoderResult, resolve_encoder
+from pixelart_converter.conversion.encoder import (
+    ALLOWED_MP4_ENCODERS,
+    EncoderResult,
+    resolve_encoder,
+)
 from pixelart_converter.errors import ConversionError, ErrorCode
 from pixelart_converter.models import (
     ConversionJob,
@@ -51,20 +55,20 @@ class ConversionService:
         """
         if job.output_format is OutputFormat.GIF:
             argv = FFmpegCommandBuilder().build(job)
-            subprocess.run(argv, check=True)
+            _run_ffmpeg(argv)
             return
 
         if isinstance(job.output, (JPEGOutput, PNGOutput)):
             self._validate_still_frames(job)
             self.preflight(job)
             argv = FFmpegCommandBuilder().build(job)
-            subprocess.run(argv, check=True)
+            _run_ffmpeg(argv)
             return
 
         self.preflight(job)
         if job.output_format is OutputFormat.MP4:
             argv = FFmpegCommandBuilder().build(job)
-            subprocess.run(argv, check=True)
+            _run_ffmpeg(argv)
             return
 
         raise NotImplementedError(
@@ -73,7 +77,8 @@ class ConversionService:
 
     def _validate_still_frames(self, job: ConversionJob) -> None:
         output = job.output
-        assert isinstance(output, (JPEGOutput, PNGOutput))
+        if not isinstance(output, (JPEGOutput, PNGOutput)):
+            raise TypeError("still-frame validation requires JPEG or PNG output")
 
         try:
             with Image.open(job.input_path) as image:
@@ -103,18 +108,29 @@ class ConversionService:
             )
 
     def _preflight_mp4(self) -> EncoderResult:
-        try:
-            resolve_ffmpeg()
-        except ConversionError as exc:
-            if exc.code is ErrorCode.ENCODER_UNAVAILABLE:
-                raise _mp4_encoder_unavailable(detail=exc.detail) from exc
-            raise
+        # Missing bundled binary is a different failure from "HW encoder
+        # listed but unavailable". Do not rewrite the user message.
+        resolve_ffmpeg()
         encoder = resolve_encoder()
-        if encoder is None:
+        if encoder is None or encoder.name not in ALLOWED_MP4_ENCODERS:
             raise _mp4_encoder_unavailable(
-                detail="bundled ffmpeg has no hardware H.264 encoder",
+                detail=(
+                    "bundled ffmpeg has no hardware H.264 encoder"
+                    if encoder is None
+                    else f"refusing encoder {encoder.name!r}"
+                ),
             )
         return encoder
+
+
+def _run_ffmpeg(argv: list[str]) -> None:
+    try:
+        subprocess.run(argv, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise ConversionError.from_code(
+            ErrorCode.UNKNOWN,
+            detail=f"ffmpeg exited {exc.returncode}",
+        ) from exc
 
 
 def _mp4_encoder_unavailable(*, detail: str | None) -> ConversionError:

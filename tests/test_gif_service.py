@@ -37,7 +37,7 @@ class ConversionServiceGifTest(unittest.TestCase):
                 "in.gif",
                 "-filter_complex",
                 "[0:v]scale=16:12:flags=neighbor,split[s0][s1];"
-                "[s0]palettegen[p];[s1][p]paletteuse=dither=none",
+                "[s0]palettegen=reserve_transparent=1[p];[s1][p]paletteuse=dither=none",
                 "-map_metadata",
                 "-1",
                 "-vsync",

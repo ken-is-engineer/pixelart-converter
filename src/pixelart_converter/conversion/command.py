@@ -101,7 +101,7 @@ class FFmpegCommandBuilder:
             chain.append(scale)
         chain.append("split[s0][s1]")
         graph = (
-            f"[0:v]{','.join(chain)};[s0]palettegen[p];"
+            f"[0:v]{','.join(chain)};[s0]palettegen=reserve_transparent=1[p];"
             f"[s1][p]paletteuse=dither=none"
         )
         return ["-filter_complex", graph]

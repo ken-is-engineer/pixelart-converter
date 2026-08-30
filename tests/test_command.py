@@ -127,8 +127,8 @@ class FFmpegCommandBuilderGifPaletteTest(unittest.TestCase):
         argv = self.builder.build(_job())
 
         graph = _filter_complex(argv)
-        self.assertIn("palettegen", graph)
-        self.assertIn("paletteuse", graph)
+        self.assertIn("palettegen=reserve_transparent=1", graph)
+        self.assertIn("paletteuse=dither=none", graph)
         self.assertIn("split", graph)
         self.assertNotIn("-vf", argv)
 

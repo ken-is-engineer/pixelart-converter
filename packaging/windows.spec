@@ -20,6 +20,7 @@ from pathlib import Path
 REPO_ROOT = Path(SPEC).resolve().parent.parent
 SRC = REPO_ROOT / "src"
 FFMPEG_SRC = REPO_ROOT / "vendor" / "ffmpeg" / "windows" / "ffmpeg.exe"
+LICENSES_DIR = REPO_ROOT / "third_party_licenses"
 
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
@@ -72,6 +73,14 @@ else:
     print(
         "WARNING: vendor/ffmpeg/windows/ffmpeg.exe is missing; the bundle cannot convert. "
         "Build it with scripts/build_ffmpeg_lgpl.sh --platform windows before packaging.",
+        file=sys.stderr,
+    )
+
+if LICENSES_DIR.is_dir():
+    datas.append((str(LICENSES_DIR), "third_party_licenses"))
+else:
+    print(
+        "WARNING: third_party_licenses/ is missing; license texts will not ship.",
         file=sys.stderr,
     )
 

@@ -597,7 +597,9 @@ class MainWindow(QMainWindow):
         if self._thread is not None:
             self._service.cancel()
             self._thread.quit()
-            self._thread.wait(5_000)
+            if not self._thread.wait(5_000):
+                event.ignore()
+                return
         super().closeEvent(event)
 
     def _on_convert(self) -> None:
@@ -668,14 +670,12 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_convert_succeeded(self) -> None:
-        self._set_converting(False)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(1)
         self.progress_label.setText(self.tr("Done"))
 
     @Slot(object)
     def _on_convert_failed(self, error: object) -> None:
-        self._set_converting(False)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.progress_label.clear()
@@ -696,6 +696,7 @@ class MainWindow(QMainWindow):
             worker.deleteLater()
         if thread is not None:
             thread.deleteLater()
+        self._set_converting(False)
 
 
 def _optional_dimension_spin() -> QSpinBox:

@@ -20,7 +20,6 @@ from pathlib import Path
 REPO_ROOT = Path(SPEC).resolve().parent.parent
 SRC = REPO_ROOT / "src"
 FFMPEG_SRC = REPO_ROOT / "vendor" / "ffmpeg" / "windows" / "ffmpeg.exe"
-FFPROBE_SRC = FFMPEG_SRC.parent / "ffprobe.exe"
 
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
@@ -64,9 +63,11 @@ PYSIDE6_ADDONS_EXCLUDES = [
 
 datas: list[tuple[str, str]] = []
 if FFMPEG_SRC.is_file():
-    datas.append((str(FFMPEG_SRC), "vendor/ffmpeg/windows"))
-    if FFPROBE_SRC.is_file():
-        datas.append((str(FFPROBE_SRC), "vendor/ffmpeg/windows"))
+    # MINGW64 ffmpeg.exe typically needs sibling DLLs (libwinpthread, etc.).
+    dest = "vendor/ffmpeg/windows"
+    for extra in sorted(FFMPEG_SRC.parent.iterdir()):
+        if extra.is_file():
+            datas.append((str(extra), dest))
 else:
     print(
         "WARNING: vendor/ffmpeg/windows/ffmpeg.exe is missing; the bundle cannot convert. "

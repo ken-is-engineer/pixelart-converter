@@ -54,7 +54,7 @@ open dist/pixelart-converter.app
 xattr -dr com.apple.quarantine dist/pixelart-converter.app
 ```
 
-システム設定の「このまま開く」でも同様。署名・公証は T5-4（本フェーズ必須ではない）。
+システム設定の「このまま開く」でも同様。署名・公証の将来方針は [signing.md](signing.md)（T5-4。本フェーズ必須ではない）。
 
 変換には同梱 ffmpeg だけを使う。システム PATH の `ffmpeg` や Homebrew の GPL ビルドへは切り替えない。
 
@@ -90,7 +90,7 @@ scripts\build_windows.ps1            # dist\pixelart-converter\
 dist\pixelart-converter\pixelart-converter.exe
 ```
 
-署名していないため SmartScreen が初回起動を止めることがある。**詳細情報 → 実行** で通す。コード署名は T5-4（本フェーズ必須ではない）。
+署名していないため SmartScreen が初回起動を止めることがある。**詳細情報 → 実行** で通す。コード署名の将来方針は [signing.md](signing.md)（T5-4。本フェーズ必須ではない）。
 
 MINGW64 でビルドした ffmpeg が `libwinpthread-1.dll` 等に依存している場合、同じ `vendor/ffmpeg/windows/` ディレクトリへ DLL を置いてから PyInstaller を走らせる（`scripts/build_ffmpeg_lgpl_windows.md` 参照）。
 

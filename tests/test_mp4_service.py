@@ -81,6 +81,8 @@ class ConversionServiceMp4LoopTest(unittest.TestCase):
             argv[:-4],
             [
                 "/bundled/ffmpeg",
+                "-nostdin",
+                "-y",
                 "-stream_loop",
                 "2",
                 "-i",
@@ -143,6 +145,8 @@ class ConversionServiceMp4LoopTest(unittest.TestCase):
             argv[:-4],
             [
                 "/bundled/ffmpeg",
+                "-nostdin",
+                "-y",
                 "-stream_loop",
                 "-1",
                 "-i",

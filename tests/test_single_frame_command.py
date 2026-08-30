@@ -38,10 +38,14 @@ class FFmpegCommandBuilderSingleFrameTest(unittest.TestCase):
             argv,
             [
                 "/bundled/ffmpeg",
+                "-nostdin",
+                "-y",
                 "-i",
                 "input.gif",
                 "-vf",
                 "select='eq(n,0)'",
+                "-vsync",
+                "0",
                 "-frames:v",
                 "1",
                 "frame.png",
@@ -64,6 +68,8 @@ class FFmpegCommandBuilderSingleFrameTest(unittest.TestCase):
             "select='eq(n,2)',scale=32:24:flags=neighbor",
         )
         self.assertEqual(argv[argv.index("-frames:v") + 1], "1")
+        self.assertEqual(argv[argv.index("-vsync") + 1], "0")
+        self.assertLess(argv.index("-vsync"), argv.index("-frames:v"))
 
     def test_default_extensions_match_png_and_jpeg(self) -> None:
         cases = (

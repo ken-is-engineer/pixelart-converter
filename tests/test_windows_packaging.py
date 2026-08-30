@@ -23,6 +23,11 @@ class WindowsSpecTest(unittest.TestCase):
         self.assertIn("datas", self.text)
         self.assertIn("vendor/ffmpeg/windows", self.text)
         self.assertIn("ffmpeg.exe", self.text)
+        self.assertIn("iterdir", self.text)
+
+    def test_copies_sibling_dlls_next_to_ffmpeg(self) -> None:
+        self.assertIn("iterdir", self.text)
+        self.assertIn("libwinpthread", self.text)
 
     def test_is_onedir_collect(self) -> None:
         self.assertIn("COLLECT", self.text)

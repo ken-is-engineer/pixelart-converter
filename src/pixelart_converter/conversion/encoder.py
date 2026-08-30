@@ -18,6 +18,7 @@ _NATIVE_ENCODERS = {
     "Darwin": "h264_videotoolbox",
     "Windows": "h264_mf",
 }
+ALLOWED_MP4_ENCODERS = frozenset(_NATIVE_ENCODERS.values())
 
 
 @dataclass(frozen=True)

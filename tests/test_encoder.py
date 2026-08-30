@@ -98,6 +98,37 @@ class EncoderResolverTest(unittest.TestCase):
         return_value=Path("/bundled/ffmpeg"),
     )
     @patch("pixelart_converter.conversion.encoder.subprocess.run")
+    @patch("pixelart_converter.conversion.encoder.platform.system")
+    def test_native_wins_even_when_libx264_is_also_listed(
+        self, system, run, _resolve_ffmpeg
+    ) -> None:
+        system.return_value = "Darwin"
+        run.return_value = _probe_result("libx264", "h264_videotoolbox")
+
+        result = EncoderResolver().resolve()
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.name, "h264_videotoolbox")
+
+    @patch(
+        "pixelart_converter.conversion.encoder.resolve_ffmpeg",
+        return_value=Path("/bundled/ffmpeg"),
+    )
+    @patch("pixelart_converter.conversion.encoder.subprocess.run")
+    @patch("pixelart_converter.conversion.encoder.platform.system")
+    def test_wrong_os_hardware_encoder_is_not_selected(
+        self, system, run, _resolve_ffmpeg
+    ) -> None:
+        system.return_value = "Darwin"
+        run.return_value = _probe_result("h264_mf")
+
+        self.assertIsNone(EncoderResolver().resolve())
+
+    @patch(
+        "pixelart_converter.conversion.encoder.resolve_ffmpeg",
+        return_value=Path("/bundled/ffmpeg"),
+    )
+    @patch("pixelart_converter.conversion.encoder.subprocess.run")
     def test_empty_encoder_list_returns_none(self, run, _resolve_ffmpeg) -> None:
         run.return_value = _probe_result()
         self.assertIsNone(EncoderResolver().resolve())

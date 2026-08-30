@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from pixelart_converter.conversion.command import FFmpegCommandBuilder
 from pixelart_converter.conversion.encoder import EncoderResult
+from pixelart_converter.errors import ConversionError, ErrorCode
 from pixelart_converter.models import (
     CommonOptions,
     ConversionJob,
@@ -157,6 +158,7 @@ class FFmpegCommandBuilderMp4LoopTest(unittest.TestCase):
 
         self.resolve_ffmpeg.assert_called_once_with()
         self.assertEqual(argv[0], "/bundled/ffmpeg")
+        self.assertEqual(argv[1:3], ["-nostdin", "-y"])
         self.assertNotEqual(argv[0], "ffmpeg")
 
     def test_duration_uses_bundled_resolver_and_never_path_ffmpeg(self) -> None:
@@ -168,8 +170,24 @@ class FFmpegCommandBuilderMp4LoopTest(unittest.TestCase):
 
         self.resolve_ffmpeg.assert_called_once_with()
         self.assertEqual(argv[0], "/bundled/ffmpeg")
+        self.assertEqual(argv[1:3], ["-nostdin", "-y"])
         self.assertNotEqual(argv[0], "ffmpeg")
         self.assertNotIn("libx264", argv)
+
+    def test_libx264_from_resolver_is_refused(self) -> None:
+        self.encoder_cls.return_value.resolve.return_value = EncoderResult(
+            name="libx264"
+        )
+        with self.assertRaises(ConversionError) as ctx:
+            self.builder.build(_mp4_job(loop_count=3))
+        self.assertEqual(ctx.exception.code, ErrorCode.ENCODER_UNAVAILABLE)
+        self.assertIn("libx264", ctx.exception.detail or "")
+
+    def test_tiny_duration_does_not_use_scientific_notation(self) -> None:
+        argv = self.builder.build(_mp4_job(duration_seconds=1e-5))
+        value = argv[argv.index("-t") + 1]
+        self.assertNotIn("e", value.lower())
+        self.assertEqual(float(value), 1e-5)
 
 
 if __name__ == "__main__":

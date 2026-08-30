@@ -172,10 +172,10 @@ class MainWindowConvertTest(unittest.TestCase):
         self.service._hold = False
         self.window.convert_button.click()
         self._pump_until(lambda: self.window.last_error is not None)
+        self._pump_until(lambda: not self.window.is_converting)
         self.assertIs(self.window.last_error, error)
         self.assertIn(error.message, self.window._error_label.text())
         critical.assert_called_once()  # type: ignore[attr-defined]
-        self.assertFalse(self.window.is_converting)
         self.assertTrue(self.window.convert_button.isEnabled())
 
     def test_common_options_are_passed_to_convert(self) -> None:
@@ -193,6 +193,13 @@ class MainWindowConvertTest(unittest.TestCase):
         self.assertEqual(job.common.height, 16)
         self.assertIs(job.common.scale_algorithm, ScaleAlgorithm.BICUBIC)
         self.assertTrue(job.common.strip_metadata)
+
+    def test_close_during_convert_cancels_and_does_not_leave_worker(self) -> None:
+        self.window.convert_button.click()
+        self.assertTrue(self.service.started.wait(timeout=2))
+        self.window.close()
+        self.assertTrue(self.service.cancel_called.is_set())
+        self._pump_until(lambda: self.window.conversion_worker is None)
 
 
 if __name__ == "__main__":

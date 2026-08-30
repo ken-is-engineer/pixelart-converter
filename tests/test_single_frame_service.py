@@ -70,6 +70,7 @@ class ConversionServiceSingleFrameTest(unittest.TestCase):
         command_ffmpeg.assert_called_once_with()
         argv = popen.call_args.args[0]
         self.assertIn("select='eq(n,1)'", argv)
+        self.assertEqual(argv[argv.index("-vsync") + 1], "0")
         self.assertEqual(argv[-4:-1], ["-progress", "pipe:1", "-nostats"])
         self.assertEqual(Path(argv[-1]).name, output_path.name)
         self.assertEqual(output_path.read_bytes(), b"jpeg")
@@ -112,6 +113,27 @@ class ConversionServiceSingleFrameTest(unittest.TestCase):
         service_ffmpeg.assert_not_called()
         command_ffmpeg.assert_not_called()
         run.assert_not_called()
+
+    @patch("pixelart_converter.conversion.command.resolve_ffmpeg")
+    @patch("pixelart_converter.conversion.service.resolve_ffmpeg")
+    @patch("pixelart_converter.conversion.service.subprocess.run")
+    def test_non_gif_input_fails_before_ffmpeg(
+        self, run, service_ffmpeg, command_ffmpeg
+    ) -> None:
+        png_path = Path(self.temp_dir.name) / "not.gif"
+        Image.new("RGB", (2, 2), "green").save(png_path, format="PNG")
+        job = ConversionJob(
+            input_path=png_path,
+            output=PNGOutput(frames=SingleFrame(0), output_path="frame.png"),
+        )
+
+        with self.assertRaises(ConversionError) as ctx:
+            ConversionService().convert(job)
+
+        self.assertEqual(ctx.exception.code, ErrorCode.INVALID_INPUT)
+        run.assert_not_called()
+        service_ffmpeg.assert_not_called()
+        command_ffmpeg.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -17,7 +17,11 @@ REQUIRED_FILES = (
     "Pillow-LICENSE.txt",
     "PyInstaller-COPYING.txt",
     "FFmpeg-README.txt",
+    "FFmpeg-SOURCE-OFFER.txt",
 )
+
+BUILD_FLAGS_FILE = REPO_ROOT / "vendor" / "ffmpeg" / "build_flags.txt"
+SOURCE_OFFER_FILE = LICENSES_DIR / "FFmpeg-SOURCE-OFFER.txt"
 
 
 class ThirdPartyLicensesTest(unittest.TestCase):
@@ -49,6 +53,25 @@ class ThirdPartyLicensesTest(unittest.TestCase):
         resolved = resolve_third_party_licenses_dir()
         self.assertEqual(resolved, LICENSES_DIR)
         self.assertEqual(notice_path(), LICENSES_DIR / "NOTICE.txt")
+
+    def test_ffmpeg_source_offer_matches_build_flags_version(self) -> None:
+        version = None
+        source_url = None
+        for raw in BUILD_FLAGS_FILE.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line.startswith("version="):
+                version = line.partition("=")[2].strip()
+            elif line.startswith("source_url="):
+                source_url = line.partition("=")[2].strip()
+        self.assertIsNotNone(version, "build_flags.txt must pin version=")
+        self.assertIsNotNone(source_url, "build_flags.txt must pin source_url=")
+
+        offer = SOURCE_OFFER_FILE.read_text(encoding="utf-8")
+        self.assertIn(version, offer)
+        self.assertIn(source_url, offer)
+        self.assertIn("vendor/ffmpeg/README.md", offer)
+        self.assertIn("vendor/ffmpeg/build_flags.txt", offer)
+        self.assertIn("scripts/build_ffmpeg_lgpl.sh", offer)
 
 
 class PackagingSpecLicensesTest(unittest.TestCase):

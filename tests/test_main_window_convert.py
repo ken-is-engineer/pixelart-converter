@@ -201,6 +201,22 @@ class MainWindowConvertTest(unittest.TestCase):
         self.assertTrue(self.service.cancel_called.is_set())
         self._pump_until(lambda: self.window.conversion_worker is None)
 
+    def test_new_input_clears_done_progress(self) -> None:
+        self.service._hold = False
+        self.window.convert_button.click()
+        self._pump_until(lambda: not self.window.is_converting)
+        self._pump_until(lambda: self.window.conversion_worker is None)
+        self.assertEqual(self.window.progress_label.text(), "Done")
+        self.assertEqual(self.window.progress_bar.value(), 1)
+
+        next_gif = Path(self.temp_dir.name) / "next.gif"
+        Image.new("RGB", (4, 4), "blue").save(next_gif, format="GIF")
+        self.window.set_input_path(next_gif)
+
+        self.assertEqual(self.window.progress_label.text(), "")
+        self.assertEqual(self.window.progress_bar.value(), 0)
+        self.assertEqual(self.window.progress_bar.maximum(), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

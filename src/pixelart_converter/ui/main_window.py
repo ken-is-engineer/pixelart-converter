@@ -52,6 +52,7 @@ _logger = get_logger("ui")
 
 _UNSET = "—"
 _MAX_DIMENSION = 16384
+_DEFAULT_OUTPUT_SUFFIX = "-video.mp4"
 _OUTPUT_FILTERS = {
     OutputFormat.MP4: "MP4 video (*.mp4)",
     OutputFormat.JPEG: "JPEG images (*.jpg *.jpeg)",
@@ -523,8 +524,11 @@ class MainWindow(QMainWindow):
         """Record an input GIF and refresh preview plus metadata labels."""
         self._input_path = str(path)
         self.path_label.setText(self._input_path)
+        self.output_path_edit.setText(str(_default_output_path(path)))
         self._load_preview(self._input_path)
         self.convert_button.setEnabled(not self._converting)
+        if not self._converting:
+            self._reset_progress()
 
     def _on_browse(self) -> None:
         start_dir = ""
@@ -664,6 +668,11 @@ class MainWindow(QMainWindow):
             self.progress_bar.setRange(0, 0)
             self.progress_label.setText(self.tr("Converting…"))
 
+    def _reset_progress(self) -> None:
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0)
+        self.progress_label.clear()
+
     @Slot(float)
     def _on_convert_progress(self, seconds: float) -> None:
         self.progress_label.setText(self.tr("{0:.2f}s").format(seconds))
@@ -676,9 +685,7 @@ class MainWindow(QMainWindow):
 
     @Slot(object)
     def _on_convert_failed(self, error: object) -> None:
-        self.progress_bar.setRange(0, 1)
-        self.progress_bar.setValue(0)
-        self.progress_label.clear()
+        self._reset_progress()
         if not isinstance(error, ConversionError):
             error = ConversionError.from_code(ErrorCode.UNKNOWN, detail=repr(error))
         self.show_error(
@@ -705,3 +712,9 @@ def _optional_dimension_spin() -> QSpinBox:
     spin.setSpecialValueText("original")
     spin.setValue(0)
     return spin
+
+
+def _default_output_path(input_path: str | Path) -> Path:
+    """Same folder and stem as the GIF, with ``-video.mp4`` appended."""
+    path = Path(input_path)
+    return path.with_name(f"{path.stem}{_DEFAULT_OUTPUT_SUFFIX}")

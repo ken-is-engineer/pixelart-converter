@@ -57,6 +57,7 @@ class MainWindowPreviewTest(unittest.TestCase):
 
     def test_empty_window_constructs_without_input(self) -> None:
         self.assertIsNone(self.window.input_path)
+        self.assertEqual(self.window.output_path_edit.text(), "")
         self.assertFalse(self.window.preview_widget.has_preview())
         self.assertEqual(
             self.window.preview_transformation_mode,
@@ -89,6 +90,20 @@ class MainWindowPreviewTest(unittest.TestCase):
         self.assertEqual(
             self.window.preview_transformation_mode,
             Qt.TransformationMode.FastTransformation,
+        )
+        self.assertEqual(
+            self.window.output_path_edit.text(),
+            str(path.with_name("tiny-video.mp4")),
+        )
+
+    def test_selecting_another_gif_replaces_suggested_output_path(self) -> None:
+        first = self._write_gif("first.gif", (2, 2), ("red",))
+        second = self._write_gif("second.gif", (2, 2), ("blue",))
+        self.window.set_input_path(first)
+        self.window.set_input_path(second)
+        self.assertEqual(
+            self.window.output_path_edit.text(),
+            str(second.with_name("second-video.mp4")),
         )
 
     def test_upscaled_preview_keeps_hard_pixel_edges(self) -> None:
